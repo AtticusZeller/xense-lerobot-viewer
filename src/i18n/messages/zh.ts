@@ -934,6 +934,10 @@ export const zh: Record<MessageKey, string> = {
   "calib.residualsTitle": "各点残差（点击跳至该帧对比重投影）",
   "calib.distortionWarning":
     "检测到非零相机畸变系数：当前重投影叠加仅使用针孔模型，已忽略畸变项。",
+  "calib.mergeIdentityMismatch":
+    "points.json（{pointsRepo}@{pointsRev}）与 frames.json（{framesRepo}@{framesRev}）的 repo_id 或 revision 不一致，未合并其中的 {count} 项旧标注；保存将按当前 frames.json 重写 points.json。",
+  "calib.mergeFrameMismatch":
+    "已丢弃 {count} 项过期标注（{ids}），因为 frames.json 中对应 id 的 arm / episode / frame 已发生变化。",
   "calib.overlayEpisode": "选择 episode",
   "calib.showTrail": "显示轨迹尾迹",
   "calib.overlayLoading": "正在加载 episode 头部视频与 TCP 状态…",

@@ -26,7 +26,8 @@ import type {
   CalibrationTcpPose,
 } from "@/types/calibration.types";
 import {
-  mergeCalibrationPoints,
+  EMPTY_CALIBRATION_MERGE_NOTICE,
+  mergeCalibrationPointsWithNotice,
   parseCalibrationFramesJson,
   parseCalibrationHeadJson,
   parseCalibrationIntrinsicsJson,
@@ -208,10 +209,12 @@ export async function loadCalibrationState(
     parseCalibrationIntrinsicsJson,
   );
 
-  const merged =
+  const mergeResult =
     parsedFrames.value || parsedPoints.value
-      ? mergeCalibrationPoints(parsedFrames.value, parsedPoints.value)
+      ? mergeCalibrationPointsWithNotice(parsedFrames.value, parsedPoints.value)
       : null;
+  const merged = mergeResult?.file ?? null;
+  const mergeNotice = mergeResult?.notice ?? EMPTY_CALIBRATION_MERGE_NOTICE;
 
   const camera =
     merged?.camera ??
@@ -247,6 +250,7 @@ export async function loadCalibrationState(
     camera,
     imageSize,
     frames: merged?.frames ?? [],
+    mergeNotice,
     head: parsedHead.value,
     intrinsics: parsedIntrinsics.value,
     cli,
@@ -278,7 +282,7 @@ export async function saveCalibrationPoints(
     );
   }
 
-  const merged = mergeCalibrationPoints(
+  const { file: merged } = mergeCalibrationPointsWithNotice(
     framesFile,
     existingPointsFile,
     updates,

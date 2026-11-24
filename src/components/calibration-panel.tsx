@@ -650,6 +650,35 @@ export default function CalibrationPanel({
         </div>
       )}
 
+      {/* Stale points.json merge notices */}
+      {state.mergeNotice.fileIdentityMismatch && (
+        <div className="rounded-md border border-amber-400/40 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-200">
+          {t("calib.mergeIdentityMismatch", {
+            pointsRepo: state.mergeNotice.fileIdentityMismatch.pointsRepoId,
+            pointsRev:
+              state.mergeNotice.fileIdentityMismatch.pointsRevision.slice(
+                0,
+                8,
+              ) || "unknown",
+            framesRepo: state.mergeNotice.fileIdentityMismatch.framesRepoId,
+            framesRev:
+              state.mergeNotice.fileIdentityMismatch.framesRevision.slice(
+                0,
+                8,
+              ) || "unknown",
+            count: state.mergeNotice.droppedByIdentityMismatchCount,
+          })}
+        </div>
+      )}
+      {state.mergeNotice.droppedFrameMismatchCount > 0 && (
+        <div className="rounded-md border border-amber-400/40 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-200">
+          {t("calib.mergeFrameMismatch", {
+            count: state.mergeNotice.droppedFrameMismatchCount,
+            ids: state.mergeNotice.droppedFrameMismatchIds.join(", "),
+          })}
+        </div>
+      )}
+
       {/* Non-zero distortion warning */}
       {distortionWarning && mode === "annotate" && (
         <div className="rounded-md border border-amber-400/40 bg-amber-500/10 px-4 py-2 text-xs text-amber-200">

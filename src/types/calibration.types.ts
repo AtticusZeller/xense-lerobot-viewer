@@ -117,6 +117,20 @@ export interface CalibrationArtifactPathSummary {
   intrinsicsPath: string;
 }
 
+export interface CalibrationFileIdentityMismatch {
+  framesRepoId: string;
+  framesRevision: string;
+  pointsRepoId: string;
+  pointsRevision: string;
+}
+
+export interface CalibrationMergeNotice {
+  droppedFrameMismatchCount: number;
+  droppedFrameMismatchIds: string[];
+  fileIdentityMismatch: CalibrationFileIdentityMismatch | null;
+  droppedByIdentityMismatchCount: number;
+}
+
 export interface CalibrationStatePayload {
   repoId: string;
   revision: string;
@@ -132,6 +146,7 @@ export interface CalibrationStatePayload {
   camera: string;
   imageSize: [number, number];
   frames: CalibrationPointEntry[];
+  mergeNotice: CalibrationMergeNotice;
   head: CalibrationHeadFile | null;
   intrinsics: CalibrationIntrinsicsFile | null;
   cli: CalibrationCliInfo;

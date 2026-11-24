@@ -177,6 +177,105 @@ describe("calibration-store", () => {
     expect(files.filter((name) => name.includes(".tmp-"))).toEqual([]);
   });
 
+  it("surfaces mergeNotice when frames.json is regenerated with different frames or revision", async () => {
+    const root = await makeTempDir();
+    const datasetDir = path.join(root, "Xense", "pack_iphone_box_1119");
+    await fs.mkdir(datasetDir, { recursive: true });
+    const paths = await resolveCalibrationArtifactPaths(datasetDir, {
+      localDatasetRoot: root,
+    });
+    await fs.mkdir(paths.calibDir, { recursive: true });
+
+    await fs.writeFile(
+      paths.pointsPath,
+      JSON.stringify({
+        version: 1,
+        repo_id: "Xense/pack_iphone_box_1119",
+        revision: "rev-a",
+        camera: "observation.images.head",
+        image_size: [640, 480],
+        frames: [
+          {
+            id: "left-000",
+            arm: "left",
+            episode_index: 12,
+            frame_index: 340,
+            tcp: SAMPLE_TCP,
+            pixel: [100, 200],
+          },
+        ],
+      }),
+      "utf-8",
+    );
+
+    // Same revision, regenerated frame under left-000 -> drop stale click and surface notice.
+    await fs.writeFile(
+      paths.framesPath,
+      JSON.stringify({
+        version: 1,
+        repo_id: "Xense/pack_iphone_box_1119",
+        revision: "rev-a",
+        camera: "observation.images.head",
+        image_size: [640, 480],
+        frames: [
+          {
+            id: "left-000",
+            arm: "left",
+            episode_index: 77,
+            frame_index: 9,
+            tcp: SAMPLE_TCP,
+          },
+        ],
+      }),
+      "utf-8",
+    );
+
+    const frameMismatchState = await loadCalibrationState(datasetDir, {
+      localDatasetRoot: root,
+      env: {},
+    });
+    expect(frameMismatchState.frames[0].pixel).toBeUndefined();
+    expect(frameMismatchState.mergeNotice.droppedFrameMismatchCount).toBe(1);
+    expect(frameMismatchState.mergeNotice.droppedFrameMismatchIds).toEqual([
+      "left-000",
+    ]);
+
+    // Different revision -> refuse to merge annotations and surface identity mismatch notice.
+    await fs.writeFile(
+      paths.framesPath,
+      JSON.stringify({
+        version: 1,
+        repo_id: "Xense/pack_iphone_box_1119",
+        revision: "rev-b",
+        camera: "observation.images.head",
+        image_size: [640, 480],
+        frames: [
+          {
+            id: "left-000",
+            arm: "left",
+            episode_index: 12,
+            frame_index: 340,
+            tcp: SAMPLE_TCP,
+          },
+        ],
+      }),
+      "utf-8",
+    );
+
+    const revMismatchState = await loadCalibrationState(datasetDir, {
+      localDatasetRoot: root,
+      env: {},
+    });
+    expect(revMismatchState.frames[0].pixel).toBeUndefined();
+    expect(revMismatchState.mergeNotice.fileIdentityMismatch).toEqual({
+      framesRepoId: "Xense/pack_iphone_box_1119",
+      framesRevision: "rev-b",
+      pointsRepoId: "Xense/pack_iphone_box_1119",
+      pointsRevision: "rev-a",
+    });
+    expect(revMismatchState.mergeNotice.droppedByIdentityMismatchCount).toBe(1);
+  });
+
   it("builds uv run --project invocation when LEROBOT_CHECK_DIR is set", () => {
     const configured = buildCalibrationCliInvocation("calib-frames", {
       datasetDir: "/data/Xense/demo",

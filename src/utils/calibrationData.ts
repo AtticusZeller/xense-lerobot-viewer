@@ -5,6 +5,7 @@ import type {
   CalibrationHeadFile,
   CalibrationIntrinsics,
   CalibrationIntrinsicsFile,
+  CalibrationMergeNotice,
   CalibrationPixel,
   CalibrationPointEntry,
   CalibrationPointsFile,
@@ -13,6 +14,18 @@ import type {
   CalibrationTcpPose,
   Matrix4RowMajor,
 } from "@/types/calibration.types";
+
+export const EMPTY_CALIBRATION_MERGE_NOTICE: CalibrationMergeNotice = {
+  droppedFrameMismatchCount: 0,
+  droppedFrameMismatchIds: [],
+  fileIdentityMismatch: null,
+  droppedByIdentityMismatchCount: 0,
+};
+
+export interface MergeCalibrationPointsResult {
+  file: CalibrationPointsFile;
+  notice: CalibrationMergeNotice;
+}
 
 export interface ArmCalibrationProgress {
   arm: string;
@@ -421,23 +434,87 @@ function applyPointUpdate(
   return next;
 }
 
+function frameIdentityMatches(
+  frame: CalibrationFrameEntry,
+  existing: CalibrationPointEntry,
+): boolean {
+  return (
+    existing.arm === frame.arm &&
+    existing.episode_index === frame.episode_index &&
+    existing.frame_index === frame.frame_index
+  );
+}
+
 /**
  * Merge `frames.json` with existing `points.json` by frame `id`, then apply
- * optional user updates.
+ * optional user updates, returning both the merged file and a notice describing
+ * any stale annotations that were dropped.
  *
- * Untouched frames keep their existing annotations and extra properties intact.
- * New frames appended to `frames.json` are included in `frames.json` order, and
- * entries that only exist in `points.json` are preserved at the end so manual
- * work is never silently dropped.
+ * Annotations are carried over only when `repo_id` and `revision` match at the
+ * file level and `arm`, `episode_index`, and `frame_index` all match for that
+ * `id`. When `calib-frames` is re-run without `--append` (restarting ids at
+ * `000`), stale clicks are dropped rather than silently attached to a different
+ * image. Entries that exist only in `points.json` are preserved only when file
+ * `repo_id` and `revision` match.
  */
-export function mergeCalibrationPoints(
+export function mergeCalibrationPointsWithNotice(
   framesFile: CalibrationFramesFile | null,
   existingPointsFile: CalibrationPointsFile | null,
   updates: readonly CalibrationPointUpdate[] = [],
-): CalibrationPointsFile {
+): MergeCalibrationPointsResult {
   const base = framesFile ?? existingPointsFile;
   if (!base) {
     throw new Error("Neither frames.json nor points.json exists");
+  }
+
+  const updateById = new Map<string, CalibrationPointUpdate>();
+  for (const update of updates) {
+    updateById.set(update.id, update);
+  }
+
+  const fileIdentityMismatch =
+    framesFile &&
+    existingPointsFile &&
+    (framesFile.repo_id !== existingPointsFile.repo_id ||
+      framesFile.revision !== existingPointsFile.revision)
+      ? {
+          framesRepoId: framesFile.repo_id,
+          framesRevision: framesFile.revision,
+          pointsRepoId: existingPointsFile.repo_id,
+          pointsRevision: existingPointsFile.revision,
+        }
+      : null;
+
+  if (fileIdentityMismatch && framesFile && existingPointsFile) {
+    const droppedByIdentityMismatchCount = existingPointsFile.frames.filter(
+      (entry) => isFrameClicked(entry) || isFrameSkipped(entry),
+    ).length;
+
+    const mergedFrames: CalibrationPointEntry[] = framesFile.frames.map(
+      (frame) => {
+        const copy: CalibrationPointEntry = { ...frame };
+        const update = updateById.get(frame.id);
+        return update ? applyPointUpdate(copy, update) : copy;
+      },
+    );
+
+    return {
+      file: {
+        ...framesFile,
+        version: framesFile.version,
+        repo_id: framesFile.repo_id,
+        revision: framesFile.revision,
+        camera: framesFile.camera,
+        image_size: [framesFile.image_size[0], framesFile.image_size[1]],
+        frames: mergedFrames,
+      },
+      notice: {
+        droppedFrameMismatchCount: 0,
+        droppedFrameMismatchIds: [],
+        fileIdentityMismatch,
+        droppedByIdentityMismatchCount,
+      },
+    };
   }
 
   const existingById = new Map<string, CalibrationPointEntry>();
@@ -447,19 +524,15 @@ export function mergeCalibrationPoints(
     }
   }
 
-  const updateById = new Map<string, CalibrationPointUpdate>();
-  for (const update of updates) {
-    updateById.set(update.id, update);
-  }
-
   const mergedFrames: CalibrationPointEntry[] = [];
   const emittedIds = new Set<string>();
+  const droppedFrameMismatchIds: string[] = [];
 
   if (framesFile) {
     for (const frame of framesFile.frames) {
       const existing = existingById.get(frame.id);
       let combined: CalibrationPointEntry;
-      if (existing) {
+      if (existing && frameIdentityMatches(frame, existing)) {
         combined = {
           ...existing,
           ...frame,
@@ -470,6 +543,12 @@ export function mergeCalibrationPoints(
         };
         if (combined.pixel) delete combined.skipped;
       } else {
+        if (
+          existing &&
+          (isFrameClicked(existing) || isFrameSkipped(existing))
+        ) {
+          droppedFrameMismatchIds.push(frame.id);
+        }
         combined = { ...frame };
       }
 
@@ -494,15 +573,35 @@ export function mergeCalibrationPoints(
   }
 
   return {
-    ...(existingPointsFile ?? {}),
-    ...base,
-    version: base.version,
-    repo_id: base.repo_id,
-    revision: base.revision,
-    camera: base.camera,
-    image_size: [base.image_size[0], base.image_size[1]],
-    frames: mergedFrames,
+    file: {
+      ...(existingPointsFile ?? {}),
+      ...base,
+      version: base.version,
+      repo_id: base.repo_id,
+      revision: base.revision,
+      camera: base.camera,
+      image_size: [base.image_size[0], base.image_size[1]],
+      frames: mergedFrames,
+    },
+    notice: {
+      droppedFrameMismatchCount: droppedFrameMismatchIds.length,
+      droppedFrameMismatchIds,
+      fileIdentityMismatch: null,
+      droppedByIdentityMismatchCount: 0,
+    },
   };
+}
+
+export function mergeCalibrationPoints(
+  framesFile: CalibrationFramesFile | null,
+  existingPointsFile: CalibrationPointsFile | null,
+  updates: readonly CalibrationPointUpdate[] = [],
+): CalibrationPointsFile {
+  return mergeCalibrationPointsWithNotice(
+    framesFile,
+    existingPointsFile,
+    updates,
+  ).file;
 }
 
 export function serializeCalibrationPoints(

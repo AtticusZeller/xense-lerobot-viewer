@@ -969,6 +969,10 @@ export const en = {
   "calib.residualsTitle": "Per-point residuals (click to inspect reprojection)",
   "calib.distortionWarning":
     "Non-zero camera distortion detected: the reprojection overlay uses a pinhole model and ignores distortion.",
+  "calib.mergeIdentityMismatch":
+    "points.json ({pointsRepo}@{pointsRev}) does not match frames.json ({framesRepo}@{framesRev}), so {count} existing annotations were not merged; saving will rewrite points.json for the current frames.json.",
+  "calib.mergeFrameMismatch":
+    "Dropped {count} stale annotation(s) ({ids}) because frames.json now maps those ids to a different arm, episode, or frame.",
   "calib.overlayEpisode": "Episode",
   "calib.showTrail": "Show trail",
   "calib.overlayLoading": "Loading episode head video and TCP state…",
