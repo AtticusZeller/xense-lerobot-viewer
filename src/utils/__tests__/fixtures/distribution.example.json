@@ -1,0 +1,1212 @@
+{
+  "version": 1,
+  "provenance": {
+    "repo_id": "Synthetic/demo",
+    "revision": "synthetic0001",
+    "task_name": "synthetic_pick_place",
+    "annotations_path": "/path/to/.xense-viewer/subtasks/Synthetic__demo@synthetic0001.csv",
+    "task_spec_path": "/path/to/.xense-viewer/subtasks/Synthetic__demo.task_spec.yaml",
+    "position_point": "tool_point",
+    "calib_path": "/path/to/.xense-viewer/calib/Synthetic__demo.head.json",
+    "calib_mtime": "2026-01-01T00:00:00+00:00",
+    "calibrated_arms": ["right"],
+    "fps": 30.0,
+    "annotator_counts": {
+      "agent": 2,
+      "human": 2,
+      "converted": 0,
+      "total": 4
+    },
+    "dataset_total_episodes": 3,
+    "episode_filter": null,
+    "annotated_episodes": [0, 2],
+    "skipped_episodes": [1]
+  },
+  "coverage_config": {
+    "xy_bin_m": 0.05,
+    "yaw_bin_deg": 30.0,
+    "sparse_threshold": 2
+  },
+  "trajectory_samples": 5,
+  "frame_shares": {
+    "total_frames": 110,
+    "subtasks": [
+      {
+        "subtask": "pick_block",
+        "episodes": 2,
+        "frames": 45,
+        "share": 0.4090909090909091
+      },
+      {
+        "subtask": "place_block",
+        "episodes": 2,
+        "frames": 65,
+        "share": 0.5909090909090909
+      }
+    ]
+  },
+  "episodes": [
+    {
+      "episode_index": 0,
+      "length": 50,
+      "subtasks": [
+        {
+          "subtask": "pick_block",
+          "start": 0,
+          "end": 20,
+          "frames": 20,
+          "grasp": 10,
+          "success": true,
+          "annotator": "human"
+        },
+        {
+          "subtask": "place_block",
+          "start": 20,
+          "end": 50,
+          "frames": 30,
+          "grasp": null,
+          "success": true,
+          "annotator": "human"
+        }
+      ]
+    },
+    {
+      "episode_index": 2,
+      "length": 60,
+      "subtasks": [
+        {
+          "subtask": "pick_block",
+          "start": 0,
+          "end": 25,
+          "frames": 25,
+          "grasp": 12,
+          "success": true,
+          "annotator": "agent"
+        },
+        {
+          "subtask": "place_block",
+          "start": 25,
+          "end": 60,
+          "frames": 35,
+          "grasp": null,
+          "success": true,
+          "annotator": "agent"
+        }
+      ]
+    }
+  ],
+  "objects": [
+    {
+      "name": "block",
+      "subtask": "pick_block",
+      "event": "grasp",
+      "arm": "right",
+      "yaw_symmetry_deg": 180.0,
+      "median_z_m": -0.5,
+      "poses": [
+        {
+          "episode_index": 0,
+          "frame": 10,
+          "arm": "right",
+          "x_m": 0.9844897959183674,
+          "y_m": 0.060408163265306125,
+          "z_m": -0.5,
+          "raw_yaw_deg": 13.061224489795919,
+          "folded_yaw_deg": 13.061224489795919,
+          "rot6d": [
+            0.9741291328364954, 0.22599210729407665, 0.0, -0.22599210729407665,
+            0.9741291328364954, 0.0
+          ]
+        },
+        {
+          "episode_index": 2,
+          "frame": 12,
+          "arm": "right",
+          "x_m": 1.0323728813559323,
+          "y_m": 0.10830508474576271,
+          "z_m": -0.5,
+          "raw_yaw_deg": 43.05084745762712,
+          "folded_yaw_deg": 43.05084745762712,
+          "rot6d": [
+            0.7307481704688299, 0.6826471353169644, 0.0, -0.6826471353169644,
+            0.7307481704688299, 0.0
+          ]
+        }
+      ],
+      "skipped": [],
+      "coverage": {
+        "sample_count": 2,
+        "xy_bin_m": 0.05,
+        "yaw_bin_deg": 30.0,
+        "sparse_threshold": 2,
+        "num_yaw_bins": 6,
+        "ix_range": [19, 20],
+        "iy_range": [1, 2],
+        "bins": [
+          {
+            "ix": 19,
+            "iy": 1,
+            "yaw_bin": 0,
+            "x_min_m": 0.9500000000000001,
+            "x_max_m": 1.0,
+            "y_min_m": 0.05,
+            "y_max_m": 0.1,
+            "yaw_min_deg": 0.0,
+            "yaw_max_deg": 30.0,
+            "count": 1
+          },
+          {
+            "ix": 19,
+            "iy": 1,
+            "yaw_bin": 1,
+            "x_min_m": 0.9500000000000001,
+            "x_max_m": 1.0,
+            "y_min_m": 0.05,
+            "y_max_m": 0.1,
+            "yaw_min_deg": 30.0,
+            "yaw_max_deg": 60.0,
+            "count": 0
+          },
+          {
+            "ix": 19,
+            "iy": 1,
+            "yaw_bin": 2,
+            "x_min_m": 0.9500000000000001,
+            "x_max_m": 1.0,
+            "y_min_m": 0.05,
+            "y_max_m": 0.1,
+            "yaw_min_deg": 60.0,
+            "yaw_max_deg": 90.0,
+            "count": 0
+          },
+          {
+            "ix": 19,
+            "iy": 1,
+            "yaw_bin": 3,
+            "x_min_m": 0.9500000000000001,
+            "x_max_m": 1.0,
+            "y_min_m": 0.05,
+            "y_max_m": 0.1,
+            "yaw_min_deg": 90.0,
+            "yaw_max_deg": 120.0,
+            "count": 0
+          },
+          {
+            "ix": 19,
+            "iy": 1,
+            "yaw_bin": 4,
+            "x_min_m": 0.9500000000000001,
+            "x_max_m": 1.0,
+            "y_min_m": 0.05,
+            "y_max_m": 0.1,
+            "yaw_min_deg": 120.0,
+            "yaw_max_deg": 150.0,
+            "count": 0
+          },
+          {
+            "ix": 19,
+            "iy": 1,
+            "yaw_bin": 5,
+            "x_min_m": 0.9500000000000001,
+            "x_max_m": 1.0,
+            "y_min_m": 0.05,
+            "y_max_m": 0.1,
+            "yaw_min_deg": 150.0,
+            "yaw_max_deg": 180.0,
+            "count": 0
+          },
+          {
+            "ix": 19,
+            "iy": 2,
+            "yaw_bin": 0,
+            "x_min_m": 0.9500000000000001,
+            "x_max_m": 1.0,
+            "y_min_m": 0.1,
+            "y_max_m": 0.15000000000000002,
+            "yaw_min_deg": 0.0,
+            "yaw_max_deg": 30.0,
+            "count": 0
+          },
+          {
+            "ix": 19,
+            "iy": 2,
+            "yaw_bin": 1,
+            "x_min_m": 0.9500000000000001,
+            "x_max_m": 1.0,
+            "y_min_m": 0.1,
+            "y_max_m": 0.15000000000000002,
+            "yaw_min_deg": 30.0,
+            "yaw_max_deg": 60.0,
+            "count": 0
+          },
+          {
+            "ix": 19,
+            "iy": 2,
+            "yaw_bin": 2,
+            "x_min_m": 0.9500000000000001,
+            "x_max_m": 1.0,
+            "y_min_m": 0.1,
+            "y_max_m": 0.15000000000000002,
+            "yaw_min_deg": 60.0,
+            "yaw_max_deg": 90.0,
+            "count": 0
+          },
+          {
+            "ix": 19,
+            "iy": 2,
+            "yaw_bin": 3,
+            "x_min_m": 0.9500000000000001,
+            "x_max_m": 1.0,
+            "y_min_m": 0.1,
+            "y_max_m": 0.15000000000000002,
+            "yaw_min_deg": 90.0,
+            "yaw_max_deg": 120.0,
+            "count": 0
+          },
+          {
+            "ix": 19,
+            "iy": 2,
+            "yaw_bin": 4,
+            "x_min_m": 0.9500000000000001,
+            "x_max_m": 1.0,
+            "y_min_m": 0.1,
+            "y_max_m": 0.15000000000000002,
+            "yaw_min_deg": 120.0,
+            "yaw_max_deg": 150.0,
+            "count": 0
+          },
+          {
+            "ix": 19,
+            "iy": 2,
+            "yaw_bin": 5,
+            "x_min_m": 0.9500000000000001,
+            "x_max_m": 1.0,
+            "y_min_m": 0.1,
+            "y_max_m": 0.15000000000000002,
+            "yaw_min_deg": 150.0,
+            "yaw_max_deg": 180.0,
+            "count": 0
+          },
+          {
+            "ix": 20,
+            "iy": 1,
+            "yaw_bin": 0,
+            "x_min_m": 1.0,
+            "x_max_m": 1.05,
+            "y_min_m": 0.05,
+            "y_max_m": 0.1,
+            "yaw_min_deg": 0.0,
+            "yaw_max_deg": 30.0,
+            "count": 0
+          },
+          {
+            "ix": 20,
+            "iy": 1,
+            "yaw_bin": 1,
+            "x_min_m": 1.0,
+            "x_max_m": 1.05,
+            "y_min_m": 0.05,
+            "y_max_m": 0.1,
+            "yaw_min_deg": 30.0,
+            "yaw_max_deg": 60.0,
+            "count": 0
+          },
+          {
+            "ix": 20,
+            "iy": 1,
+            "yaw_bin": 2,
+            "x_min_m": 1.0,
+            "x_max_m": 1.05,
+            "y_min_m": 0.05,
+            "y_max_m": 0.1,
+            "yaw_min_deg": 60.0,
+            "yaw_max_deg": 90.0,
+            "count": 0
+          },
+          {
+            "ix": 20,
+            "iy": 1,
+            "yaw_bin": 3,
+            "x_min_m": 1.0,
+            "x_max_m": 1.05,
+            "y_min_m": 0.05,
+            "y_max_m": 0.1,
+            "yaw_min_deg": 90.0,
+            "yaw_max_deg": 120.0,
+            "count": 0
+          },
+          {
+            "ix": 20,
+            "iy": 1,
+            "yaw_bin": 4,
+            "x_min_m": 1.0,
+            "x_max_m": 1.05,
+            "y_min_m": 0.05,
+            "y_max_m": 0.1,
+            "yaw_min_deg": 120.0,
+            "yaw_max_deg": 150.0,
+            "count": 0
+          },
+          {
+            "ix": 20,
+            "iy": 1,
+            "yaw_bin": 5,
+            "x_min_m": 1.0,
+            "x_max_m": 1.05,
+            "y_min_m": 0.05,
+            "y_max_m": 0.1,
+            "yaw_min_deg": 150.0,
+            "yaw_max_deg": 180.0,
+            "count": 0
+          },
+          {
+            "ix": 20,
+            "iy": 2,
+            "yaw_bin": 0,
+            "x_min_m": 1.0,
+            "x_max_m": 1.05,
+            "y_min_m": 0.1,
+            "y_max_m": 0.15000000000000002,
+            "yaw_min_deg": 0.0,
+            "yaw_max_deg": 30.0,
+            "count": 0
+          },
+          {
+            "ix": 20,
+            "iy": 2,
+            "yaw_bin": 1,
+            "x_min_m": 1.0,
+            "x_max_m": 1.05,
+            "y_min_m": 0.1,
+            "y_max_m": 0.15000000000000002,
+            "yaw_min_deg": 30.0,
+            "yaw_max_deg": 60.0,
+            "count": 1
+          },
+          {
+            "ix": 20,
+            "iy": 2,
+            "yaw_bin": 2,
+            "x_min_m": 1.0,
+            "x_max_m": 1.05,
+            "y_min_m": 0.1,
+            "y_max_m": 0.15000000000000002,
+            "yaw_min_deg": 60.0,
+            "yaw_max_deg": 90.0,
+            "count": 0
+          },
+          {
+            "ix": 20,
+            "iy": 2,
+            "yaw_bin": 3,
+            "x_min_m": 1.0,
+            "x_max_m": 1.05,
+            "y_min_m": 0.1,
+            "y_max_m": 0.15000000000000002,
+            "yaw_min_deg": 90.0,
+            "yaw_max_deg": 120.0,
+            "count": 0
+          },
+          {
+            "ix": 20,
+            "iy": 2,
+            "yaw_bin": 4,
+            "x_min_m": 1.0,
+            "x_max_m": 1.05,
+            "y_min_m": 0.1,
+            "y_max_m": 0.15000000000000002,
+            "yaw_min_deg": 120.0,
+            "yaw_max_deg": 150.0,
+            "count": 0
+          },
+          {
+            "ix": 20,
+            "iy": 2,
+            "yaw_bin": 5,
+            "x_min_m": 1.0,
+            "x_max_m": 1.05,
+            "y_min_m": 0.1,
+            "y_max_m": 0.15000000000000002,
+            "yaw_min_deg": 150.0,
+            "yaw_max_deg": 180.0,
+            "count": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "tray",
+      "subtask": "place_block",
+      "event": "release",
+      "arm": "right",
+      "yaw_symmetry_deg": 180.0,
+      "median_z_m": -0.5,
+      "poses": [
+        {
+          "episode_index": 0,
+          "frame": 49,
+          "arm": "right",
+          "x_m": 1.08,
+          "y_m": 0.14,
+          "z_m": -0.5,
+          "raw_yaw_deg": 25.0,
+          "folded_yaw_deg": 25.0,
+          "rot6d": [
+            0.9063077870366499, 0.42261826174069944, 0.0, -0.42261826174069944,
+            0.9063077870366499, 0.0
+          ]
+        },
+        {
+          "episode_index": 2,
+          "frame": 59,
+          "arm": "right",
+          "x_m": 1.12,
+          "y_m": 0.18,
+          "z_m": -0.5,
+          "raw_yaw_deg": 55.0,
+          "folded_yaw_deg": 55.0,
+          "rot6d": [
+            0.5735764363510462, 0.8191520442889918, 0.0, -0.8191520442889918,
+            0.5735764363510462, 0.0
+          ]
+        }
+      ],
+      "skipped": [],
+      "coverage": {
+        "sample_count": 2,
+        "xy_bin_m": 0.05,
+        "yaw_bin_deg": 30.0,
+        "sparse_threshold": 2,
+        "num_yaw_bins": 6,
+        "ix_range": [21, 22],
+        "iy_range": [2, 3],
+        "bins": [
+          {
+            "ix": 21,
+            "iy": 2,
+            "yaw_bin": 0,
+            "x_min_m": 1.05,
+            "x_max_m": 1.1,
+            "y_min_m": 0.1,
+            "y_max_m": 0.15000000000000002,
+            "yaw_min_deg": 0.0,
+            "yaw_max_deg": 30.0,
+            "count": 1
+          },
+          {
+            "ix": 21,
+            "iy": 2,
+            "yaw_bin": 1,
+            "x_min_m": 1.05,
+            "x_max_m": 1.1,
+            "y_min_m": 0.1,
+            "y_max_m": 0.15000000000000002,
+            "yaw_min_deg": 30.0,
+            "yaw_max_deg": 60.0,
+            "count": 0
+          },
+          {
+            "ix": 21,
+            "iy": 2,
+            "yaw_bin": 2,
+            "x_min_m": 1.05,
+            "x_max_m": 1.1,
+            "y_min_m": 0.1,
+            "y_max_m": 0.15000000000000002,
+            "yaw_min_deg": 60.0,
+            "yaw_max_deg": 90.0,
+            "count": 0
+          },
+          {
+            "ix": 21,
+            "iy": 2,
+            "yaw_bin": 3,
+            "x_min_m": 1.05,
+            "x_max_m": 1.1,
+            "y_min_m": 0.1,
+            "y_max_m": 0.15000000000000002,
+            "yaw_min_deg": 90.0,
+            "yaw_max_deg": 120.0,
+            "count": 0
+          },
+          {
+            "ix": 21,
+            "iy": 2,
+            "yaw_bin": 4,
+            "x_min_m": 1.05,
+            "x_max_m": 1.1,
+            "y_min_m": 0.1,
+            "y_max_m": 0.15000000000000002,
+            "yaw_min_deg": 120.0,
+            "yaw_max_deg": 150.0,
+            "count": 0
+          },
+          {
+            "ix": 21,
+            "iy": 2,
+            "yaw_bin": 5,
+            "x_min_m": 1.05,
+            "x_max_m": 1.1,
+            "y_min_m": 0.1,
+            "y_max_m": 0.15000000000000002,
+            "yaw_min_deg": 150.0,
+            "yaw_max_deg": 180.0,
+            "count": 0
+          },
+          {
+            "ix": 21,
+            "iy": 3,
+            "yaw_bin": 0,
+            "x_min_m": 1.05,
+            "x_max_m": 1.1,
+            "y_min_m": 0.15000000000000002,
+            "y_max_m": 0.2,
+            "yaw_min_deg": 0.0,
+            "yaw_max_deg": 30.0,
+            "count": 0
+          },
+          {
+            "ix": 21,
+            "iy": 3,
+            "yaw_bin": 1,
+            "x_min_m": 1.05,
+            "x_max_m": 1.1,
+            "y_min_m": 0.15000000000000002,
+            "y_max_m": 0.2,
+            "yaw_min_deg": 30.0,
+            "yaw_max_deg": 60.0,
+            "count": 0
+          },
+          {
+            "ix": 21,
+            "iy": 3,
+            "yaw_bin": 2,
+            "x_min_m": 1.05,
+            "x_max_m": 1.1,
+            "y_min_m": 0.15000000000000002,
+            "y_max_m": 0.2,
+            "yaw_min_deg": 60.0,
+            "yaw_max_deg": 90.0,
+            "count": 0
+          },
+          {
+            "ix": 21,
+            "iy": 3,
+            "yaw_bin": 3,
+            "x_min_m": 1.05,
+            "x_max_m": 1.1,
+            "y_min_m": 0.15000000000000002,
+            "y_max_m": 0.2,
+            "yaw_min_deg": 90.0,
+            "yaw_max_deg": 120.0,
+            "count": 0
+          },
+          {
+            "ix": 21,
+            "iy": 3,
+            "yaw_bin": 4,
+            "x_min_m": 1.05,
+            "x_max_m": 1.1,
+            "y_min_m": 0.15000000000000002,
+            "y_max_m": 0.2,
+            "yaw_min_deg": 120.0,
+            "yaw_max_deg": 150.0,
+            "count": 0
+          },
+          {
+            "ix": 21,
+            "iy": 3,
+            "yaw_bin": 5,
+            "x_min_m": 1.05,
+            "x_max_m": 1.1,
+            "y_min_m": 0.15000000000000002,
+            "y_max_m": 0.2,
+            "yaw_min_deg": 150.0,
+            "yaw_max_deg": 180.0,
+            "count": 0
+          },
+          {
+            "ix": 22,
+            "iy": 2,
+            "yaw_bin": 0,
+            "x_min_m": 1.1,
+            "x_max_m": 1.1500000000000001,
+            "y_min_m": 0.1,
+            "y_max_m": 0.15000000000000002,
+            "yaw_min_deg": 0.0,
+            "yaw_max_deg": 30.0,
+            "count": 0
+          },
+          {
+            "ix": 22,
+            "iy": 2,
+            "yaw_bin": 1,
+            "x_min_m": 1.1,
+            "x_max_m": 1.1500000000000001,
+            "y_min_m": 0.1,
+            "y_max_m": 0.15000000000000002,
+            "yaw_min_deg": 30.0,
+            "yaw_max_deg": 60.0,
+            "count": 0
+          },
+          {
+            "ix": 22,
+            "iy": 2,
+            "yaw_bin": 2,
+            "x_min_m": 1.1,
+            "x_max_m": 1.1500000000000001,
+            "y_min_m": 0.1,
+            "y_max_m": 0.15000000000000002,
+            "yaw_min_deg": 60.0,
+            "yaw_max_deg": 90.0,
+            "count": 0
+          },
+          {
+            "ix": 22,
+            "iy": 2,
+            "yaw_bin": 3,
+            "x_min_m": 1.1,
+            "x_max_m": 1.1500000000000001,
+            "y_min_m": 0.1,
+            "y_max_m": 0.15000000000000002,
+            "yaw_min_deg": 90.0,
+            "yaw_max_deg": 120.0,
+            "count": 0
+          },
+          {
+            "ix": 22,
+            "iy": 2,
+            "yaw_bin": 4,
+            "x_min_m": 1.1,
+            "x_max_m": 1.1500000000000001,
+            "y_min_m": 0.1,
+            "y_max_m": 0.15000000000000002,
+            "yaw_min_deg": 120.0,
+            "yaw_max_deg": 150.0,
+            "count": 0
+          },
+          {
+            "ix": 22,
+            "iy": 2,
+            "yaw_bin": 5,
+            "x_min_m": 1.1,
+            "x_max_m": 1.1500000000000001,
+            "y_min_m": 0.1,
+            "y_max_m": 0.15000000000000002,
+            "yaw_min_deg": 150.0,
+            "yaw_max_deg": 180.0,
+            "count": 0
+          },
+          {
+            "ix": 22,
+            "iy": 3,
+            "yaw_bin": 0,
+            "x_min_m": 1.1,
+            "x_max_m": 1.1500000000000001,
+            "y_min_m": 0.15000000000000002,
+            "y_max_m": 0.2,
+            "yaw_min_deg": 0.0,
+            "yaw_max_deg": 30.0,
+            "count": 0
+          },
+          {
+            "ix": 22,
+            "iy": 3,
+            "yaw_bin": 1,
+            "x_min_m": 1.1,
+            "x_max_m": 1.1500000000000001,
+            "y_min_m": 0.15000000000000002,
+            "y_max_m": 0.2,
+            "yaw_min_deg": 30.0,
+            "yaw_max_deg": 60.0,
+            "count": 1
+          },
+          {
+            "ix": 22,
+            "iy": 3,
+            "yaw_bin": 2,
+            "x_min_m": 1.1,
+            "x_max_m": 1.1500000000000001,
+            "y_min_m": 0.15000000000000002,
+            "y_max_m": 0.2,
+            "yaw_min_deg": 60.0,
+            "yaw_max_deg": 90.0,
+            "count": 0
+          },
+          {
+            "ix": 22,
+            "iy": 3,
+            "yaw_bin": 3,
+            "x_min_m": 1.1,
+            "x_max_m": 1.1500000000000001,
+            "y_min_m": 0.15000000000000002,
+            "y_max_m": 0.2,
+            "yaw_min_deg": 90.0,
+            "yaw_max_deg": 120.0,
+            "count": 0
+          },
+          {
+            "ix": 22,
+            "iy": 3,
+            "yaw_bin": 4,
+            "x_min_m": 1.1,
+            "x_max_m": 1.1500000000000001,
+            "y_min_m": 0.15000000000000002,
+            "y_max_m": 0.2,
+            "yaw_min_deg": 120.0,
+            "yaw_max_deg": 150.0,
+            "count": 0
+          },
+          {
+            "ix": 22,
+            "iy": 3,
+            "yaw_bin": 5,
+            "x_min_m": 1.1,
+            "x_max_m": 1.1500000000000001,
+            "y_min_m": 0.15000000000000002,
+            "y_max_m": 0.2,
+            "yaw_min_deg": 150.0,
+            "yaw_max_deg": 180.0,
+            "count": 0
+          }
+        ]
+      }
+    }
+  ],
+  "subtasks": [
+    {
+      "name": "pick_block",
+      "prompt": "Pick up the block.",
+      "participating_arms": ["right"],
+      "arms": {
+        "right": {
+          "metrics": {
+            "episode_count": 2,
+            "start_coverage": {
+              "occupied_xy_cells": 2,
+              "yaw_span_deg": 30.0
+            },
+            "end_coverage": {
+              "occupied_xy_cells": 2,
+              "yaw_span_deg": 30.28536838464197
+            },
+            "trajectory_dispersion_cm": 3.4657136727677624
+          },
+          "episodes": [
+            {
+              "episode_index": 0,
+              "start_frame": 0,
+              "end_frame": 19,
+              "start_pose": {
+                "x_m": 0.96,
+                "y_m": 0.04,
+                "z_m": -0.5,
+                "yaw_deg": 10.0,
+                "rot6d": [
+                  0.984807753012208, 0.17364817766693033, 0.0,
+                  -0.17364817766693033, 0.984807753012208, 0.0
+                ]
+              },
+              "end_pose": {
+                "x_m": 1.006530612244898,
+                "y_m": 0.07877551020408163,
+                "z_m": -0.5,
+                "yaw_deg": 15.81632653061223,
+                "rot6d": [
+                  0.9621403677422486, 0.272554421649715, 0.0,
+                  -0.272554421649715, 0.9621403677422486, 0.0
+                ]
+              },
+              "trajectory": [
+                {
+                  "progress": 0.0,
+                  "x_m": 0.96,
+                  "y_m": 0.04,
+                  "z_m": -0.5,
+                  "yaw_deg": 10.0
+                },
+                {
+                  "progress": 0.25,
+                  "x_m": 0.9716326530612245,
+                  "y_m": 0.049693877551020414,
+                  "z_m": -0.5,
+                  "yaw_deg": 11.454081632653043
+                },
+                {
+                  "progress": 0.5,
+                  "x_m": 0.983265306122449,
+                  "y_m": 0.05938775510204082,
+                  "z_m": -0.5,
+                  "yaw_deg": 12.908163265306115
+                },
+                {
+                  "progress": 0.75,
+                  "x_m": 0.9948979591836735,
+                  "y_m": 0.06908163265306123,
+                  "z_m": -0.5,
+                  "yaw_deg": 14.362244897959187
+                },
+                {
+                  "progress": 1.0,
+                  "x_m": 1.006530612244898,
+                  "y_m": 0.07877551020408163,
+                  "z_m": -0.5,
+                  "yaw_deg": 15.81632653061223
+                }
+              ]
+            },
+            {
+              "episode_index": 2,
+              "start_frame": 0,
+              "end_frame": 24,
+              "start_pose": {
+                "x_m": 1.01,
+                "y_m": 0.09,
+                "z_m": -0.5,
+                "yaw_deg": 40.0,
+                "rot6d": [
+                  0.766044443118978, 0.6427876096865393, 0.0,
+                  -0.6427876096865393, 0.766044443118978, 0.0
+                ]
+              },
+              "end_pose": {
+                "x_m": 1.0547457627118644,
+                "y_m": 0.12661016949152543,
+                "z_m": -0.5,
+                "yaw_deg": 46.10169491525423,
+                "rot6d": [
+                  0.6933805127362743, 0.7205716234751277, 0.0,
+                  -0.7205716234751277, 0.6933805127362743, 0.0
+                ]
+              },
+              "trajectory": [
+                {
+                  "progress": 0.0,
+                  "x_m": 1.01,
+                  "y_m": 0.09,
+                  "z_m": -0.5,
+                  "yaw_deg": 40.0
+                },
+                {
+                  "progress": 0.25,
+                  "x_m": 1.021186440677966,
+                  "y_m": 0.09915254237288135,
+                  "z_m": -0.5,
+                  "yaw_deg": 41.525423728813564
+                },
+                {
+                  "progress": 0.5,
+                  "x_m": 1.0323728813559323,
+                  "y_m": 0.10830508474576271,
+                  "z_m": -0.5,
+                  "yaw_deg": 43.05084745762713
+                },
+                {
+                  "progress": 0.75,
+                  "x_m": 1.0435593220338983,
+                  "y_m": 0.11745762711864406,
+                  "z_m": -0.5,
+                  "yaw_deg": 44.57627118644069
+                },
+                {
+                  "progress": 1.0,
+                  "x_m": 1.0547457627118644,
+                  "y_m": 0.12661016949152543,
+                  "z_m": -0.5,
+                  "yaw_deg": 46.10169491525423
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "place_block",
+      "prompt": "Place the block into the tray.",
+      "participating_arms": ["right", "left"],
+      "arms": {
+        "right": {
+          "metrics": {
+            "episode_count": 2,
+            "start_coverage": {
+              "occupied_xy_cells": 2,
+              "yaw_span_deg": 30.233483223798032
+            },
+            "end_coverage": {
+              "occupied_xy_cells": 2,
+              "yaw_span_deg": 30.0
+            },
+            "trajectory_dispersion_cm": 3.0927124893364533
+          },
+          "episodes": [
+            {
+              "episode_index": 0,
+              "start_frame": 20,
+              "end_frame": 49,
+              "start_pose": {
+                "x_m": 1.0089795918367348,
+                "y_m": 0.08081632653061224,
+                "z_m": -0.5,
+                "yaw_deg": 16.122448979591837,
+                "rot6d": [
+                  0.9606704261456819, 0.27769107354950034, 0.0,
+                  -0.27769107354950034, 0.9606704261456819, 0.0
+                ]
+              },
+              "end_pose": {
+                "x_m": 1.08,
+                "y_m": 0.14,
+                "z_m": -0.5,
+                "yaw_deg": 25.0,
+                "rot6d": [
+                  0.9063077870366499, 0.42261826174069944, 0.0,
+                  -0.42261826174069944, 0.9063077870366499, 0.0
+                ]
+              },
+              "trajectory": [
+                {
+                  "progress": 0.0,
+                  "x_m": 1.0089795918367348,
+                  "y_m": 0.08081632653061224,
+                  "z_m": -0.5,
+                  "yaw_deg": 16.122448979591837
+                },
+                {
+                  "progress": 0.25,
+                  "x_m": 1.026734693877551,
+                  "y_m": 0.09561224489795918,
+                  "z_m": -0.5,
+                  "yaw_deg": 18.341836734693885
+                },
+                {
+                  "progress": 0.5,
+                  "x_m": 1.0444897959183674,
+                  "y_m": 0.11040816326530613,
+                  "z_m": -0.5,
+                  "yaw_deg": 20.561224489795904
+                },
+                {
+                  "progress": 0.75,
+                  "x_m": 1.0622448979591836,
+                  "y_m": 0.12520408163265306,
+                  "z_m": -0.5,
+                  "yaw_deg": 22.780612244897952
+                },
+                {
+                  "progress": 1.0,
+                  "x_m": 1.08,
+                  "y_m": 0.14,
+                  "z_m": -0.5,
+                  "yaw_deg": 25.0
+                }
+              ]
+            },
+            {
+              "episode_index": 2,
+              "start_frame": 25,
+              "end_frame": 59,
+              "start_pose": {
+                "x_m": 1.0566101694915255,
+                "y_m": 0.128135593220339,
+                "z_m": -0.5,
+                "yaw_deg": 46.35593220338984,
+                "rot6d": [
+                  0.6901763206661607, 0.7236412414945135, 0.0,
+                  -0.7236412414945135, 0.6901763206661607, 0.0
+                ]
+              },
+              "end_pose": {
+                "x_m": 1.12,
+                "y_m": 0.18,
+                "z_m": -0.5,
+                "yaw_deg": 55.0,
+                "rot6d": [
+                  0.5735764363510462, 0.8191520442889918, 0.0,
+                  -0.8191520442889918, 0.5735764363510462, 0.0
+                ]
+              },
+              "trajectory": [
+                {
+                  "progress": 0.0,
+                  "x_m": 1.0566101694915255,
+                  "y_m": 0.128135593220339,
+                  "z_m": -0.5,
+                  "yaw_deg": 46.35593220338984
+                },
+                {
+                  "progress": 0.25,
+                  "x_m": 1.0724576271186441,
+                  "y_m": 0.14110169491525423,
+                  "z_m": -0.5,
+                  "yaw_deg": 48.51694915254237
+                },
+                {
+                  "progress": 0.5,
+                  "x_m": 1.0883050847457627,
+                  "y_m": 0.1540677966101695,
+                  "z_m": -0.5,
+                  "yaw_deg": 50.67796610169492
+                },
+                {
+                  "progress": 0.75,
+                  "x_m": 1.1041525423728813,
+                  "y_m": 0.16703389830508475,
+                  "z_m": -0.5,
+                  "yaw_deg": 52.838983050847446
+                },
+                {
+                  "progress": 1.0,
+                  "x_m": 1.12,
+                  "y_m": 0.18,
+                  "z_m": -0.5,
+                  "yaw_deg": 55.0
+                }
+              ]
+            }
+          ]
+        },
+        "left": {
+          "metrics": {
+            "episode_count": 2,
+            "start_coverage": {
+              "occupied_xy_cells": 1,
+              "yaw_span_deg": 14.23728813559319
+            },
+            "end_coverage": {
+              "occupied_xy_cells": 1,
+              "yaw_span_deg": 20.0
+            },
+            "trajectory_dispersion_cm": 0.7683754714336827
+          },
+          "episodes": [
+            {
+              "episode_index": 0,
+              "start_frame": 20,
+              "end_frame": 49,
+              "start_pose": {
+                "x_m": 0.9081632653061225,
+                "y_m": -0.12959183673469388,
+                "z_m": -0.3,
+                "yaw_deg": -5.0,
+                "rot6d": [
+                  0.9961946980917455, -0.08715574274765817, 0.0,
+                  0.08715574274765817, 0.9961946980917455, 0.0
+                ]
+              },
+              "end_pose": {
+                "x_m": 0.92,
+                "y_m": -0.1,
+                "z_m": -0.3,
+                "yaw_deg": -5.0,
+                "rot6d": [
+                  0.9961946980917455, -0.08715574274765817, 0.0,
+                  0.08715574274765817, 0.9961946980917455, 0.0
+                ]
+              },
+              "trajectory": [
+                {
+                  "progress": 0.0,
+                  "x_m": 0.9081632653061225,
+                  "y_m": -0.12959183673469388,
+                  "z_m": -0.3,
+                  "yaw_deg": -5.0
+                },
+                {
+                  "progress": 0.25,
+                  "x_m": 0.9111224489795918,
+                  "y_m": -0.1221938775510204,
+                  "z_m": -0.3,
+                  "yaw_deg": -5.0
+                },
+                {
+                  "progress": 0.5,
+                  "x_m": 0.9140816326530613,
+                  "y_m": -0.11479591836734693,
+                  "z_m": -0.3,
+                  "yaw_deg": -5.0
+                },
+                {
+                  "progress": 0.75,
+                  "x_m": 0.9170408163265306,
+                  "y_m": -0.10739795918367348,
+                  "z_m": -0.3,
+                  "yaw_deg": -5.0
+                },
+                {
+                  "progress": 1.0,
+                  "x_m": 0.92,
+                  "y_m": -0.1,
+                  "z_m": -0.3,
+                  "yaw_deg": -5.0
+                }
+              ]
+            },
+            {
+              "episode_index": 2,
+              "start_frame": 25,
+              "end_frame": 59,
+              "start_pose": {
+                "x_m": 0.9054237288135593,
+                "y_m": -0.12610169491525425,
+                "z_m": -0.3,
+                "yaw_deg": 9.237288135593218,
+                "rot6d": [
+                  0.9870320052387561, 0.1605235827981672, 0.0,
+                  -0.1605235827981672, 0.9870320052387561, 0.0
+                ]
+              },
+              "end_pose": {
+                "x_m": 0.94,
+                "y_m": -0.08,
+                "z_m": -0.3,
+                "yaw_deg": 15.0,
+                "rot6d": [
+                  0.9659258262890683, 0.25881904510252074, 0.0,
+                  -0.25881904510252074, 0.9659258262890683, 0.0
+                ]
+              },
+              "trajectory": [
+                {
+                  "progress": 0.0,
+                  "x_m": 0.9054237288135593,
+                  "y_m": -0.12610169491525425,
+                  "z_m": -0.3,
+                  "yaw_deg": 9.237288135593218
+                },
+                {
+                  "progress": 0.25,
+                  "x_m": 0.9140677966101695,
+                  "y_m": -0.11457627118644068,
+                  "z_m": -0.3,
+                  "yaw_deg": 10.67796610169492
+                },
+                {
+                  "progress": 0.5,
+                  "x_m": 0.9227118644067797,
+                  "y_m": -0.10305084745762712,
+                  "z_m": -0.3,
+                  "yaw_deg": 12.118644067796595
+                },
+                {
+                  "progress": 0.75,
+                  "x_m": 0.9313559322033897,
+                  "y_m": -0.09152542372881356,
+                  "z_m": -0.3,
+                  "yaw_deg": 13.559322033898297
+                },
+                {
+                  "progress": 1.0,
+                  "x_m": 0.94,
+                  "y_m": -0.08,
+                  "z_m": -0.3,
+                  "yaw_deg": 15.0
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -5,6 +5,7 @@ const RUN_TIMEOUT_MS = 120_000;
 const MAX_OUTPUT_CHARS = 32_000;
 
 export type CalibrationCliAction = "calib-frames" | "calibrate";
+export type LerobotCheckCliAction = CalibrationCliAction | "distribution";
 
 export interface CalibrationCliInvocation {
   configured: boolean;
@@ -24,8 +25,15 @@ export interface CliExecResult {
   error: string | null;
 }
 
-/** Per-dataset lock so overlapping runs cannot race on `.xense-viewer/calib/`. */
+/** Per-dataset+scope lock so overlapping runs cannot race on `.xense-viewer/` files. */
 const activeRuns = new Map<string, { action: string; startedAt: number }>();
+
+function runLockKey(
+  datasetDir: string,
+  scope: "calib" | "distribution",
+): string {
+  return `${datasetDir}::${scope}`;
+}
 
 export function shellQuote(value: string): string {
   return /^[A-Za-z0-9_./:@=-]+$/.test(value)
@@ -41,7 +49,7 @@ export function resolveLerobotCheckDir(
 }
 
 export function buildCalibrationCliInvocation(
-  action: CalibrationCliAction,
+  action: LerobotCheckCliAction,
   options: {
     datasetDir: string;
     repoId: string;
@@ -135,6 +143,27 @@ export function buildCalibrationCommands(
   };
 }
 
+export function buildDistributionCommand(
+  datasetDir: string,
+  repoId: string,
+  env: Record<string, string | undefined> = process.env,
+): {
+  configured: boolean;
+  projectDir: string | null;
+  command: string;
+} {
+  const invocation = buildCalibrationCliInvocation("distribution", {
+    datasetDir,
+    repoId,
+    env,
+  });
+  return {
+    configured: invocation.configured,
+    projectDir: invocation.projectDir,
+    command: invocation.displayCommand,
+  };
+}
+
 function appendCapped(current: string, chunk: string): string {
   if (current.length >= MAX_OUTPUT_CHARS) return current;
   return (current + chunk).slice(0, MAX_OUTPUT_CHARS);
@@ -143,11 +172,18 @@ function appendCapped(current: string, chunk: string): string {
 export function getActiveCalibrationRun(
   datasetDir: string,
 ): { action: string; startedAt: number } | null {
-  return activeRuns.get(datasetDir) ?? null;
+  return activeRuns.get(runLockKey(datasetDir, "calib")) ?? null;
 }
 
-export async function runCalibrationCli(
-  action: CalibrationCliAction,
+export function getActiveDistributionRun(
+  datasetDir: string,
+): { action: string; startedAt: number } | null {
+  return activeRuns.get(runLockKey(datasetDir, "distribution")) ?? null;
+}
+
+async function runLerobotCheckCli(
+  action: LerobotCheckCliAction,
+  scope: "calib" | "distribution",
   options: {
     datasetDir: string;
     repoId: string;
@@ -170,8 +206,9 @@ export async function runCalibrationCli(
     };
   }
 
-  if (activeRuns.has(options.datasetDir)) {
-    const running = activeRuns.get(options.datasetDir)!;
+  const lockKey = runLockKey(options.datasetDir, scope);
+  if (activeRuns.has(lockKey)) {
+    const running = activeRuns.get(lockKey)!;
     return {
       ok: false,
       configured: true,
@@ -183,7 +220,7 @@ export async function runCalibrationCli(
     };
   }
 
-  activeRuns.set(options.datasetDir, { action, startedAt: Date.now() });
+  activeRuns.set(lockKey, { action, startedAt: Date.now() });
   const timeoutMs = options.timeoutMs ?? RUN_TIMEOUT_MS;
 
   try {
@@ -266,6 +303,28 @@ export async function runCalibrationCli(
       });
     });
   } finally {
-    activeRuns.delete(options.datasetDir);
+    activeRuns.delete(lockKey);
   }
+}
+
+export function runCalibrationCli(
+  action: CalibrationCliAction,
+  options: {
+    datasetDir: string;
+    repoId: string;
+    append?: number;
+    timeoutMs?: number;
+    env?: Record<string, string | undefined>;
+  },
+): Promise<CliExecResult> {
+  return runLerobotCheckCli(action, "calib", options);
+}
+
+export function runDistributionCli(options: {
+  datasetDir: string;
+  repoId: string;
+  timeoutMs?: number;
+  env?: Record<string, string | undefined>;
+}): Promise<CliExecResult> {
+  return runLerobotCheckCli("distribution", "distribution", options);
 }

@@ -67,14 +67,3 @@ export interface SubtaskEpisodePayload {
 export interface SubtaskSaveResponse extends SubtaskEpisodePayload {
   changedRowCount: number;
 }
-
-export interface DistributionReportStatus {
-  repoId: string;
-  revision: string;
-  exists: boolean;
-  reportPath: string;
-  reportUrl: string;
-  mtimeMs: number | null;
-  sizeBytes: number | null;
-  suggestedCommand: string;
-}

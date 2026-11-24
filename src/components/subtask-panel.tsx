@@ -9,12 +9,14 @@ import React, {
 } from "react";
 import { useTime } from "@/context/time-context";
 import { useLocale } from "@/context/locale-context";
+import type { DistributionRecomputeResult } from "@/types/distribution.types";
 import type {
   SubtaskAnnotationRow,
   SubtaskEpisodePayload,
   SubtaskSaveResponse,
   TaskSpec,
 } from "@/types/subtask-annotation.types";
+import { copyTextToClipboard } from "@/utils/clipboard";
 import { resolveDraftAnnotators } from "@/utils/subtaskCsv";
 import {
   activeSubtaskIndexAt,
@@ -43,6 +45,7 @@ interface SubtaskPanelProps {
     taskSpec: TaskSpec | null;
     episodeLength: number;
   }) => void;
+  onDistributionUpdated?: () => void;
 }
 
 const ANNOTATOR_BADGE: Record<string, string> = {
@@ -57,6 +60,7 @@ export function SubtaskPanel({
   fps,
   episodeLengthFallback,
   onSubtaskStateChange,
+  onDistributionUpdated,
 }: SubtaskPanelProps) {
   const { t, tp } = useLocale();
   const { currentTime, duration, seek, setIsPlaying } = useTime();
@@ -74,11 +78,19 @@ export function SubtaskPanel({
     kind: "ok" | "error";
     text: string;
   } | null>(null);
+  const [recomputeStatus, setRecomputeStatus] = useState<{
+    kind: "running" | "ok" | "unconfigured" | "error";
+    text: string;
+    command?: string;
+  } | null>(null);
+  const [copiedRecomputeCmd, setCopiedRecomputeCmd] = useState(false);
   const [jumpFrameInput, setJumpFrameInput] = useState("");
   const userToggledRef = useRef(false);
 
   const onStateChangeRef = useRef(onSubtaskStateChange);
   onStateChangeRef.current = onSubtaskStateChange;
+  const onDistUpdatedRef = useRef(onDistributionUpdated);
+  onDistUpdatedRef.current = onDistributionUpdated;
 
   useEffect(() => {
     let cancelled = false;
@@ -229,6 +241,51 @@ export function SubtaskPanel({
             ? tp("subtask.savedChanged", saved.changedRowCount)
             : t("subtask.savedNoDiff"),
       });
+
+      // Trigger non-blocking distribution recompute after a successful save.
+      setRecomputeStatus({
+        kind: "running",
+        text: t("subtask.recomputingDist"),
+      });
+      void fetch(`/api/local-datasets/${encodedPath}/distribution/recompute`, {
+        method: "POST",
+      })
+        .then(async (recomputeRes) => {
+          const recomputeBody = (await recomputeRes
+            .json()
+            .catch(() => ({}))) as Partial<
+            DistributionRecomputeResult & { error?: string }
+          >;
+          if (recomputeRes.ok && recomputeBody.ok) {
+            setRecomputeStatus({
+              kind: "ok",
+              text: t("subtask.distUpdated"),
+            });
+            onDistUpdatedRef.current?.();
+          } else if (recomputeBody.configured === false) {
+            setRecomputeStatus({
+              kind: "unconfigured",
+              text: t("subtask.distUnconfigured"),
+              command: recomputeBody.command,
+            });
+          } else {
+            setRecomputeStatus({
+              kind: "error",
+              text: t("subtask.distFailed", {
+                error: recomputeBody.error ?? `HTTP ${recomputeRes.status}`,
+              }),
+              command: recomputeBody.command,
+            });
+          }
+        })
+        .catch((err: unknown) => {
+          setRecomputeStatus({
+            kind: "error",
+            text: t("subtask.distFailed", {
+              error: err instanceof Error ? err.message : String(err),
+            }),
+          });
+        });
     } catch (err: unknown) {
       setSaveMessage({
         kind: "error",
@@ -984,6 +1041,43 @@ export function SubtaskPanel({
                     }`}
                   >
                     {saveMessage.text}
+                  </span>
+                )}
+
+                {recomputeStatus && (
+                  <span
+                    className={`inline-flex flex-wrap items-center gap-1.5 text-xs ${
+                      recomputeStatus.kind === "ok"
+                        ? "text-cyan-300"
+                        : recomputeStatus.kind === "running"
+                          ? "text-slate-400"
+                          : "text-amber-300"
+                    }`}
+                  >
+                    <span>· {recomputeStatus.text}</span>
+                    {recomputeStatus.command && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void copyTextToClipboard(
+                            recomputeStatus.command!,
+                          ).then((ok) => {
+                            if (!ok) return;
+                            setCopiedRecomputeCmd(true);
+                            window.setTimeout(
+                              () => setCopiedRecomputeCmd(false),
+                              1800,
+                            );
+                          });
+                        }}
+                        title={recomputeStatus.command}
+                        className="rounded border border-white/15 bg-black/30 px-1.5 py-0.5 text-[11px] text-cyan-200 hover:border-cyan-400/50"
+                      >
+                        {copiedRecomputeCmd
+                          ? t("dist.copied")
+                          : t("common.copy")}
+                      </button>
+                    )}
                   </span>
                 )}
 

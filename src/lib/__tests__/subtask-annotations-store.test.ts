@@ -4,8 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import {
   detectDatasetRevision,
-  getDistributionReportStatus,
-  readDistributionReportHtml,
   resolveSubtaskArtifactPaths,
 } from "../subtask-annotations-store";
 
@@ -88,46 +86,5 @@ describe("subtask-annotations-store", () => {
         "Xense__bi_elite_cs66_rt_egg_carton_to_tray_1016_fixed.task_spec.yaml",
       ),
     );
-    expect(paths.reportHtmlPath).toBe(
-      path.join(
-        root,
-        ".xense-viewer",
-        "reports",
-        `Xense__bi_elite_cs66_rt_egg_carton_to_tray_1016_fixed@${sha}`,
-        "index.html",
-      ),
-    );
-  });
-
-  it("reports missing distribution HTML with lerobot-check report command and reads HTML once present", async () => {
-    const root = await makeTempDir();
-    const datasetDir = path.join(root, "Xense", "sample_ds");
-    await fs.mkdir(datasetDir, { recursive: true });
-
-    const missing = await getDistributionReportStatus(datasetDir, "abc", {
-      localDatasetRoot: root,
-    });
-    expect(missing.exists).toBe(false);
-    expect(missing.suggestedCommand).toContain("lerobot-check report");
-    expect(missing.suggestedCommand).toContain("--repo-id Xense/sample_ds");
-    expect(missing.suggestedCommand).toContain(missing.reportPath);
-
-    await fs.mkdir(path.dirname(missing.reportPath), { recursive: true });
-    await fs.writeFile(
-      missing.reportPath,
-      "<!doctype html><html><body>Report</body></html>",
-      "utf-8",
-    );
-
-    const present = await getDistributionReportStatus(datasetDir, "abc", {
-      localDatasetRoot: root,
-    });
-    expect(present.exists).toBe(true);
-    expect(present.sizeBytes).toBeGreaterThan(0);
-
-    const loaded = await readDistributionReportHtml(datasetDir, {
-      localDatasetRoot: root,
-    });
-    expect(loaded?.html).toContain("<body>Report</body>");
   });
 });

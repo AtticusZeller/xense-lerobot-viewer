@@ -417,6 +417,7 @@ function EpisodeViewerInner({
     taskSpec: TaskSpec | null;
     episodeLength: number;
   }>({ rows: [], taskSpec: null, episodeLength: 0 });
+  const [distributionRefreshNonce, setDistributionRefreshNonce] = useState(0);
 
   useEffect(() => {
     if (!encodedDatasetPath) return;
@@ -1180,6 +1181,9 @@ function EpisodeViewerInner({
                   fps={datasetInfo.fps}
                   episodeLengthFallback={data.episodeLength}
                   onSubtaskStateChange={setSubtaskTimeline}
+                  onDistributionUpdated={() =>
+                    setDistributionRefreshNonce((n) => n + 1)
+                  }
                 />
               )}
 
@@ -1344,6 +1348,7 @@ function EpisodeViewerInner({
               <DistributionPanel
                 encodedPath={encodedDatasetPath}
                 datasetName={datasetDisplayName}
+                refreshNonce={distributionRefreshNonce}
               />
             </Suspense>
           )}

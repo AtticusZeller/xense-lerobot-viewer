@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import fs from "node:fs/promises";
+import { loadDistributionState } from "@/lib/distribution-store";
 import { resolveDatasetRoot } from "@/lib/local-dataset-paths";
-import { getDistributionReportStatus } from "@/lib/subtask-annotations-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,15 +24,15 @@ export async function GET(
   }
 
   try {
-    const status = await getDistributionReportStatus(datasetDir, encodedPath);
-    return Response.json(status);
+    const state = await loadDistributionState(datasetDir);
+    return Response.json(state);
   } catch (err) {
     return Response.json(
       {
         error:
           err instanceof Error
             ? err.message
-            : "Failed to check distribution report",
+            : "Failed to load distribution state",
       },
       { status: 500 },
     );

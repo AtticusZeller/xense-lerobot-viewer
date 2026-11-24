@@ -4,7 +4,6 @@ import { isInsideRoot } from "@/lib/local-dataset-paths";
 import { resolveLocalDatasetRoot } from "@/lib/local-datasets-discovery";
 import { locateEpisodeRows } from "@/lib/parquet-server";
 import type {
-  DistributionReportStatus,
   SubtaskAnnotationRow,
   SubtaskEpisodePayload,
   SubtaskValidationIssue,
@@ -16,7 +15,6 @@ import { parseTaskSpecYaml } from "@/utils/taskSpecYaml";
 
 const VIEWER_STORE_DIR = ".xense-viewer";
 const SUBTASKS_DIR = "subtasks";
-const REPORTS_DIR = "reports";
 
 export interface SubtaskArtifactPaths {
   viewerRoot: string;
@@ -26,8 +24,6 @@ export interface SubtaskArtifactPaths {
   revision: string;
   csvPath: string;
   taskSpecPath: string;
-  reportDir: string;
-  reportHtmlPath: string;
 }
 
 export class SubtaskValidationError extends Error {
@@ -120,10 +116,8 @@ export async function resolveSubtaskArtifactPaths(
     SUBTASKS_DIR,
     `${key}.task_spec.yaml`,
   );
-  const reportDir = path.join(viewerRoot, REPORTS_DIR, versionedKey);
-  const reportHtmlPath = path.join(reportDir, "index.html");
 
-  for (const target of [csvPath, taskSpecPath, reportDir, reportHtmlPath]) {
+  for (const target of [csvPath, taskSpecPath]) {
     if (!isInsideRoot(viewerRoot, target)) {
       throw new Error(`Artifact path escaped ${VIEWER_STORE_DIR}: ${target}`);
     }
@@ -137,8 +131,6 @@ export async function resolveSubtaskArtifactPaths(
     revision,
     csvPath,
     taskSpecPath,
-    reportDir,
-    reportHtmlPath,
   };
 }
 
@@ -276,77 +268,4 @@ export async function saveEpisodeSubtaskRows(
       rows: updatedRows,
     },
   };
-}
-
-function shellQuote(value: string): string {
-  return /^[A-Za-z0-9_./:@=-]+$/.test(value)
-    ? value
-    : `'${value.replace(/'/g, "'\\''")}'`;
-}
-
-export function buildReportCommand(paths: SubtaskArtifactPaths): string {
-  return [
-    "lerobot-check report",
-    `--repo-id ${shellQuote(paths.repoId)}`,
-    `--annotations ${shellQuote(paths.csvPath)}`,
-    `--task-spec ${shellQuote(paths.taskSpecPath)}`,
-    `-o ${shellQuote(paths.reportHtmlPath)}`,
-  ].join(" ");
-}
-
-export async function getDistributionReportStatus(
-  datasetDir: string,
-  encodedPath: string,
-  options: { localDatasetRoot?: string } = {},
-): Promise<DistributionReportStatus> {
-  const paths = await resolveSubtaskArtifactPaths(datasetDir, options);
-  const reportUrl = `/api/local-datasets/${encodedPath}/distribution/report`;
-  const suggestedCommand = buildReportCommand(paths);
-
-  let stat: import("node:fs").Stats | null = null;
-  try {
-    const candidate = await fs.stat(paths.reportHtmlPath);
-    if (candidate.isFile()) {
-      const [realViewer, realReport] = await Promise.all([
-        fs.realpath(paths.viewerRoot),
-        fs.realpath(paths.reportHtmlPath),
-      ]);
-      if (isInsideRoot(realViewer, realReport)) {
-        stat = candidate;
-      }
-    }
-  } catch {
-    stat = null;
-  }
-
-  return {
-    repoId: paths.repoId,
-    revision: paths.revision,
-    exists: stat !== null,
-    reportPath: paths.reportHtmlPath,
-    reportUrl,
-    mtimeMs: stat ? stat.mtimeMs : null,
-    sizeBytes: stat ? Number(stat.size) : null,
-    suggestedCommand,
-  };
-}
-
-export async function readDistributionReportHtml(
-  datasetDir: string,
-  options: { localDatasetRoot?: string } = {},
-): Promise<{ html: string; reportPath: string } | null> {
-  const paths = await resolveSubtaskArtifactPaths(datasetDir, options);
-  try {
-    const stat = await fs.stat(paths.reportHtmlPath);
-    if (!stat.isFile()) return null;
-    const [realViewer, realReport] = await Promise.all([
-      fs.realpath(paths.viewerRoot),
-      fs.realpath(paths.reportHtmlPath),
-    ]);
-    if (!isInsideRoot(realViewer, realReport)) return null;
-    const html = await fs.readFile(realReport, "utf-8");
-    return { html, reportPath: paths.reportHtmlPath };
-  } catch {
-    return null;
-  }
 }
