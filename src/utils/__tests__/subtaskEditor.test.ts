@@ -248,9 +248,35 @@ describe("validateEpisodeSubtasks lightweight checks", () => {
 });
 
 describe("frame/time conversion", () => {
-  it("round-trips integer frame indices accurately at 30 fps", () => {
-    for (const f of [0, 1, 29, 30, 899, 900, 901, 2778]) {
-      expect(timeToFrame(frameToTime(f, 30), 30, 2779)).toBe(f);
+  it("seeks to the midpoint of each frame interval and round-trips via floor", () => {
+    for (const f of [0, 1, 29, 30, 450, 897, 898, 2778]) {
+      const t = frameToTime(f, 30);
+      expect(t).toBeCloseTo((f + 0.5) / 30, 10);
+      expect(timeToFrame(t, 30, 2779)).toBe(f);
     }
+  });
+
+  it("stays strictly inside [k/fps, (k+1)/fps) after microsecond truncation on repeating-decimal offsets", () => {
+    const fps = 30;
+    const fromTimestamp = 3221 / fps; // 107.36666666666666 (episode 4 in file-002.mp4)
+    for (const f of [0, 1, 450, 897, 898, 3815]) {
+      const targetMedia = fromTimestamp + frameToTime(f, fps);
+      const truncatedMedia = Math.trunc(targetMedia * 1e6) / 1e6;
+      const ptsStart = (3221 + f) / fps;
+      const ptsNext = (3221 + f + 1) / fps;
+      expect(truncatedMedia).toBeGreaterThan(ptsStart);
+      expect(truncatedMedia).toBeLessThan(ptsNext);
+      expect(timeToFrame(truncatedMedia - fromTimestamp, fps, 3816)).toBe(f);
+    }
+  });
+
+  it("maps any timestamp within a frame's display interval [k/fps, (k+1)/fps) to frame k", () => {
+    const fps = 30;
+    expect(timeToFrame(0, fps, 100)).toBe(0);
+    expect(timeToFrame(9 / fps, fps, 100)).toBe(9);
+    expect(timeToFrame((9 + 0.5) / fps, fps, 100)).toBe(9);
+    expect(timeToFrame((9 + 0.99) / fps, fps, 100)).toBe(9);
+    expect(timeToFrame(10 / fps, fps, 100)).toBe(10);
+    expect(timeToFrame(999, fps, 100)).toBe(99);
   });
 });

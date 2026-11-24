@@ -424,7 +424,7 @@ export function SubtaskPanel({
             {t("subtask.currentFrame", {
               frame: currentFrame,
               total: episodeLength,
-              time: currentTime.toFixed(2),
+              time: (fps > 0 ? currentFrame / fps : currentTime).toFixed(2),
             })}
           </span>
           {isDirty && (

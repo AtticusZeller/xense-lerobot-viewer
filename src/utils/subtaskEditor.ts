@@ -43,14 +43,19 @@ export function timeToFrame(
     return 0;
   }
   const maxFrame = Math.max(0, episodeLength - 1);
-  return Math.max(0, Math.min(maxFrame, Math.round(timeSeconds * fps)));
+  return Math.max(0, Math.min(maxFrame, Math.floor(timeSeconds * fps + 1e-6)));
 }
 
+/**
+ * Target the midpoint of frame `frame`'s display interval `[frame/fps, (frame+1)/fps)`.
+ * Seeking directly to `frame/fps` in concatenated v3.0 MP4s with repeating-decimal
+ * `from_timestamp` offsets can truncate 1 µs below the frame's PTS and display `frame - 1`.
+ */
 export function frameToTime(frame: number, fps: number): number {
   if (!Number.isFinite(frame) || !Number.isFinite(fps) || fps <= 0) {
     return 0;
   }
-  return Math.max(0, frame) / fps;
+  return (Math.max(0, frame) + 0.5) / fps;
 }
 
 export function activeSubtaskIndexAt(

@@ -150,7 +150,7 @@ const PlaybackBar: React.FC<PlaybackBarProps> = ({
       </button>
       <button
         title={t("player.rewind")}
-        onClick={() => seek(0)}
+        onClick={() => (hasFrameControl ? seekToFrame(0) : seek(0))}
         className="hidden md:flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:text-slate-100 hover:bg-white/5 transition-colors"
       >
         <FaUndoAlt size={13} />
