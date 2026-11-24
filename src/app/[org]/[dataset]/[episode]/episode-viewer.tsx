@@ -69,6 +69,7 @@ const ActionInsightsPanel = lazy(
 const FilteringPanel = lazy(() => import("@/components/filtering-panel"));
 const DoctorPanel = lazy(() => import("@/components/doctor-panel"));
 const DistributionPanel = lazy(() => import("@/components/distribution-panel"));
+const CalibrationPanel = lazy(() => import("@/components/calibration-panel"));
 const ParquetTablePanel = lazy(
   () => import("@/components/parquet-table-panel"),
 );
@@ -116,6 +117,7 @@ type ActiveTab =
   | "annotations"
   | "statistics"
   | "distribution"
+  | "calibration"
   | "frames"
   | "insights"
   | "doctor"
@@ -128,6 +130,7 @@ const ACTIVE_TABS: readonly ActiveTab[] = [
   "annotations",
   "statistics",
   "distribution",
+  "calibration",
   "frames",
   "insights",
   "doctor",
@@ -917,6 +920,8 @@ function EpisodeViewerInner({
       const focus = describeShortcutTarget(e.target);
       const inTextEntry = blocksAllShortcuts(focus);
 
+      if (s.activeTab === "calibration") return;
+
       if (key === " ") {
         if (inTextEntry || yieldsSpaceShortcut(focus)) return;
         e.preventDefault();
@@ -1009,6 +1014,11 @@ function EpisodeViewerInner({
           "distribution",
           t("viewer.tab.distribution"),
           t("viewer.tab.distributionTitle"),
+        )}
+        {renderTab(
+          "calibration",
+          t("viewer.tab.calibration"),
+          t("viewer.tab.calibrationTitle"),
         )}
         {renderTab("filtering", t("viewer.tab.filtering"))}
         {renderTab("frames", t("viewer.tab.frames"))}
@@ -1334,6 +1344,18 @@ function EpisodeViewerInner({
               <DistributionPanel
                 encodedPath={encodedDatasetPath}
                 datasetName={datasetDisplayName}
+              />
+            </Suspense>
+          )}
+
+          {activeTab === "calibration" && (
+            <Suspense fallback={<Loading />}>
+              <CalibrationPanel
+                encodedPath={encodedDatasetPath}
+                datasetName={datasetDisplayName}
+                totalEpisodes={datasetInfo.total_episodes}
+                currentEpisodeId={episodeId}
+                fps={datasetInfo.fps}
               />
             </Suspense>
           )}

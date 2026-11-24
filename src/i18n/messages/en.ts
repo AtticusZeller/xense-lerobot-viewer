@@ -284,6 +284,9 @@ export const en = {
   "viewer.tab.distribution": "Distribution",
   "viewer.tab.distributionTitle":
     "Dataset subtask distribution report (lerobot-check)",
+  "viewer.tab.calibration": "Calibration",
+  "viewer.tab.calibrationTitle":
+    "Click gripper fingertip midpoints in head camera frames and verify extrinsic reprojection",
   "viewer.tab.filtering": "Filtering",
   "viewer.tab.frames": "Frames",
   "viewer.tab.insights": "Action Insights",
@@ -912,6 +915,68 @@ export const en = {
   "dist.copied": "Copied",
   "dist.refresh": "Refresh",
   "dist.openNewTab": "Open in new tab",
+
+  // ── head-camera calibration tab ─────────────────────────────────────────
+  "calib.title": "Head Camera Calibration",
+  "calib.loading": "Loading calibration files…",
+  "calib.loadError": "Failed to load calibration state.",
+  "calib.intrinsicsPresent": "Intrinsics ready",
+  "calib.intrinsicsMissing": "Missing intrinsics.json",
+  "calib.modeAnnotate": "Click Points",
+  "calib.modeOverlay": "Verify Overlay",
+  "calib.overlayNeedsHead": "Run calibration to generate head.json first",
+  "calib.savePoints": "Save points.json",
+  "calib.saveWithCount": "Save points.json ({count})",
+  "calib.saving": "Saving…",
+  "calib.savedPoints": "Saved points.json atomically ({count} updated)",
+  "calib.initFrames": "Sample frames",
+  "calib.appendFrames": "Append 5 frames",
+  "calib.runCalibrate": "Run calibrate",
+  "calib.running": "Running…",
+  "calib.cliUnconfiguredTitle":
+    "LEROBOT_CHECK_DIR is not set. Run this command in a terminal, then click Refresh:",
+  "calib.cliUnconfiguredHint":
+    "Set LEROBOT_CHECK_DIR to run directly from the UI, or copy the commands below:",
+  "calib.calibrateSucceeded": "Calibration finished and head.json reloaded.",
+  "calib.framesUpdated":
+    "Calibration frames updated and merged with existing points.",
+  "calib.missingFramesTitle": "No calibration frames found (frames.json)",
+  "calib.missingFramesDesc":
+    "Run lerobot-check calib-frames to sample candidate head camera frames, then refresh to start clicking fingertip midpoints.",
+  "calib.expectedPath": "Expected file path",
+  "calib.cliCommandLabel": "Sampling command",
+  "calib.framesListTitle": "Calibration frames",
+  "calib.progressSummary":
+    "{clicked} clicked · {skipped} skipped · {remaining} remaining",
+  "calib.armCounts": "{skipped} skipped · {remaining} left",
+  "calib.prevFrame": "Prev (←/P)",
+  "calib.nextFrame": "Next (→/N)",
+  "calib.nextRemaining": "Next remaining (U)",
+  "calib.skipFrame": "Skip (S)",
+  "calib.unskip": "Unskip (S)",
+  "calib.clearPoint": "Clear (Del)",
+  "calib.shortcutsHint":
+    "Click image to set fingertip midpoint · ←/→ or P/N prev/next · S skip · U next remaining · Del clear · Ctrl+S save",
+  "calib.viewZoom": "Zoom",
+  "calib.panHint": "Right-drag or Shift+drag to pan",
+  "calib.magnifier": "Magnifier",
+  "calib.loadingFrame": "Seeking target frame…",
+  "calib.videoLoadError": "Failed to load head camera video.",
+  "calib.statusSkipped": "Skipped",
+  "calib.statusSkippedShort": "skip",
+  "calib.resultsTitle": "Calibration results (head.json)",
+  "calib.openOverlay": "Verify overlay",
+  "calib.residualsTitle": "Per-point residuals (click to inspect reprojection)",
+  "calib.distortionWarning":
+    "Non-zero camera distortion detected: the reprojection overlay uses a pinhole model and ignores distortion.",
+  "calib.overlayEpisode": "Episode",
+  "calib.showTrail": "Show trail",
+  "calib.overlayLoading": "Loading episode head video and TCP state…",
+  "calib.overlayNoVideo":
+    "Video for camera {camera} was not found for this episode.",
+  "calib.play": "Play",
+  "calib.pause": "Pause",
+  "calib.behindCamera": "behind camera",
 } as const;
 
 export type MessageKey = keyof typeof en;
