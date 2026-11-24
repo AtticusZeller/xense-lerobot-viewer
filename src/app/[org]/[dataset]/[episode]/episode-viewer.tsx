@@ -70,6 +70,7 @@ const FilteringPanel = lazy(() => import("@/components/filtering-panel"));
 const DoctorPanel = lazy(() => import("@/components/doctor-panel"));
 const DistributionPanel = lazy(() => import("@/components/distribution-panel"));
 const CalibrationPanel = lazy(() => import("@/components/calibration-panel"));
+const CollectionPanel = lazy(() => import("@/components/collection-panel"));
 const ParquetTablePanel = lazy(
   () => import("@/components/parquet-table-panel"),
 );
@@ -118,6 +119,7 @@ type ActiveTab =
   | "statistics"
   | "distribution"
   | "calibration"
+  | "collection"
   | "frames"
   | "insights"
   | "doctor"
@@ -131,6 +133,7 @@ const ACTIVE_TABS: readonly ActiveTab[] = [
   "statistics",
   "distribution",
   "calibration",
+  "collection",
   "frames",
   "insights",
   "doctor",
@@ -921,7 +924,7 @@ function EpisodeViewerInner({
       const focus = describeShortcutTarget(e.target);
       const inTextEntry = blocksAllShortcuts(focus);
 
-      if (s.activeTab === "calibration") return;
+      if (s.activeTab === "calibration" || s.activeTab === "collection") return;
 
       if (key === " ") {
         if (inTextEntry || yieldsSpaceShortcut(focus)) return;
@@ -1020,6 +1023,11 @@ function EpisodeViewerInner({
           "calibration",
           t("viewer.tab.calibration"),
           t("viewer.tab.calibrationTitle"),
+        )}
+        {renderTab(
+          "collection",
+          t("viewer.tab.collection"),
+          t("viewer.tab.collectionTitle"),
         )}
         {renderTab("filtering", t("viewer.tab.filtering"))}
         {renderTab("frames", t("viewer.tab.frames"))}
@@ -1361,6 +1369,19 @@ function EpisodeViewerInner({
                 totalEpisodes={datasetInfo.total_episodes}
                 currentEpisodeId={episodeId}
                 fps={datasetInfo.fps}
+              />
+            </Suspense>
+          )}
+
+          {activeTab === "collection" && (
+            <Suspense fallback={<Loading />}>
+              <CollectionPanel
+                encodedPath={encodedDatasetPath}
+                datasetName={datasetDisplayName}
+                totalEpisodes={datasetInfo.total_episodes}
+                currentEpisodeId={episodeId}
+                fps={datasetInfo.fps}
+                onOpenCalibrationTab={() => handleTabChange("calibration")}
               />
             </Suspense>
           )}

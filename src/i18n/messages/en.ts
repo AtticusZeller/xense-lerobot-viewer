@@ -287,6 +287,9 @@ export const en = {
   "viewer.tab.calibration": "Calibration",
   "viewer.tab.calibrationTitle":
     "Click gripper fingertip midpoints in head camera frames and verify extrinsic reprojection",
+  "viewer.tab.collection": "Collection",
+  "viewer.tab.collectionTitle":
+    "Draw target polygon and generate numbered collection placements and test points",
   "viewer.tab.filtering": "Filtering",
   "viewer.tab.frames": "Frames",
   "viewer.tab.insights": "Action Insights",
@@ -1018,6 +1021,48 @@ export const en = {
   "calib.play": "Play",
   "calib.pause": "Pause",
   "calib.behindCamera": "behind camera",
+
+  // ── collection (suggest) tab ────────────────────────────────────────────
+  "collect.title": "Collection Plan",
+  "collect.loading": "Loading collection state…",
+  "collect.loadError": "Failed to load collection state.",
+  "collect.countLabel": "Per object",
+  "collect.testPerTierLabel": "Test / tier",
+  "collect.generate": "Generate",
+  "collect.generating": "Generating…",
+  "collect.exportPng": "Export PNG",
+  "collect.exportCsv": "Export CSV",
+  "collect.noCalibNotice":
+    "Head camera is not calibrated yet; markers and pixel polygons require calibration.",
+  "collect.goCalibration": "Open Calibration",
+  "collect.tcpDistNotice":
+    "Calibration exists, but distribution.json uses tcp — recompute distribution first.",
+  "collect.noDistNotice":
+    "distribution.json is missing; compute distribution first.",
+  "collect.editPolygon": "Edit polygon",
+  "collect.undoVertex": "Undo",
+  "collect.clearPolygon": "Clear",
+  "collect.savePolygon": "Save polygon",
+  "collect.deletePolygon": "Delete saved",
+  "collect.minVerticesError": "Target polygon needs at least 3 vertices.",
+  "collect.polygonSaved": "Saved target polygon to targets.json.",
+  "collect.polygonDeleted": "Deleted saved targets.json.",
+  "collect.suggestOk": "Generated collection placements and test points.",
+  "collect.polygonHint":
+    "Left-click to add vertex · drag vertex to move · right-click or Shift+click vertex to delete",
+  "collect.layerPolygon": "Target polygon",
+  "collect.layerPlacements": "Placements",
+  "collect.tierDense": "Dense",
+  "collect.tierEdge": "Edge",
+  "collect.tierEmpty": "Empty",
+  "collect.tableTitle": "Point list",
+  "collect.noSuggestions":
+    "No suggestions yet. Draw a target polygon and click Generate.",
+  "collect.colNo": "No.",
+  "collect.colObject": "Object",
+  "collect.colKind": "Tier",
+  "collect.kindPlacement": "Placement",
+  "collect.omittedObjects": "Omitted objects with no valid cells: {objects}",
 } as const;
 
 export type MessageKey = keyof typeof en;

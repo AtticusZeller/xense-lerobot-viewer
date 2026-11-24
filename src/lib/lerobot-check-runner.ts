@@ -5,7 +5,10 @@ const RUN_TIMEOUT_MS = 120_000;
 const MAX_OUTPUT_CHARS = 32_000;
 
 export type CalibrationCliAction = "calib-frames" | "calibrate";
-export type LerobotCheckCliAction = CalibrationCliAction | "distribution";
+export type LerobotCheckCliAction =
+  | CalibrationCliAction
+  | "distribution"
+  | "suggest";
 
 export interface CalibrationCliInvocation {
   configured: boolean;
@@ -30,7 +33,7 @@ const activeRuns = new Map<string, { action: string; startedAt: number }>();
 
 function runLockKey(
   datasetDir: string,
-  scope: "calib" | "distribution",
+  scope: "calib" | "distribution" | "suggest",
 ): string {
   return `${datasetDir}::${scope}`;
 }
@@ -54,6 +57,9 @@ export function buildCalibrationCliInvocation(
     datasetDir: string;
     repoId: string;
     append?: number;
+    count?: number;
+    testPerTier?: number;
+    seed?: number;
     env?: Record<string, string | undefined>;
   },
 ): CalibrationCliInvocation {
@@ -72,6 +78,25 @@ export function buildCalibrationCliInvocation(
     options.append > 0
   ) {
     subcommandArgs.push("--append", String(options.append));
+  }
+  if (action === "suggest") {
+    if (
+      typeof options.count === "number" &&
+      Number.isInteger(options.count) &&
+      options.count > 0
+    ) {
+      subcommandArgs.push("-n", String(options.count));
+    }
+    if (
+      typeof options.testPerTier === "number" &&
+      Number.isInteger(options.testPerTier) &&
+      options.testPerTier >= 0
+    ) {
+      subcommandArgs.push("--test-per-tier", String(options.testPerTier));
+    }
+    if (typeof options.seed === "number" && Number.isInteger(options.seed)) {
+      subcommandArgs.push("--seed", String(options.seed));
+    }
   }
 
   if (projectDir) {
@@ -164,6 +189,35 @@ export function buildDistributionCommand(
   };
 }
 
+export function buildSuggestCommand(
+  datasetDir: string,
+  repoId: string,
+  options: {
+    count?: number;
+    testPerTier?: number;
+    seed?: number;
+    env?: Record<string, string | undefined>;
+  } = {},
+): {
+  configured: boolean;
+  projectDir: string | null;
+  command: string;
+} {
+  const invocation = buildCalibrationCliInvocation("suggest", {
+    datasetDir,
+    repoId,
+    count: options.count,
+    testPerTier: options.testPerTier,
+    seed: options.seed,
+    env: options.env,
+  });
+  return {
+    configured: invocation.configured,
+    projectDir: invocation.projectDir,
+    command: invocation.displayCommand,
+  };
+}
+
 function appendCapped(current: string, chunk: string): string {
   if (current.length >= MAX_OUTPUT_CHARS) return current;
   return (current + chunk).slice(0, MAX_OUTPUT_CHARS);
@@ -181,13 +235,22 @@ export function getActiveDistributionRun(
   return activeRuns.get(runLockKey(datasetDir, "distribution")) ?? null;
 }
 
+export function getActiveSuggestRun(
+  datasetDir: string,
+): { action: string; startedAt: number } | null {
+  return activeRuns.get(runLockKey(datasetDir, "suggest")) ?? null;
+}
+
 async function runLerobotCheckCli(
   action: LerobotCheckCliAction,
-  scope: "calib" | "distribution",
+  scope: "calib" | "distribution" | "suggest",
   options: {
     datasetDir: string;
     repoId: string;
     append?: number;
+    count?: number;
+    testPerTier?: number;
+    seed?: number;
     timeoutMs?: number;
     env?: Record<string, string | undefined>;
   },
@@ -327,4 +390,16 @@ export function runDistributionCli(options: {
   env?: Record<string, string | undefined>;
 }): Promise<CliExecResult> {
   return runLerobotCheckCli("distribution", "distribution", options);
+}
+
+export function runSuggestCli(options: {
+  datasetDir: string;
+  repoId: string;
+  count?: number;
+  testPerTier?: number;
+  seed?: number;
+  timeoutMs?: number;
+  env?: Record<string, string | undefined>;
+}): Promise<CliExecResult> {
+  return runLerobotCheckCli("suggest", "suggest", options);
 }
