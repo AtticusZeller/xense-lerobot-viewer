@@ -405,9 +405,16 @@ export const SimpleVideosPlayer = ({
         seeker = createCoalescedSeeker(video, THRESHOLDS.VIDEO_SYNC_TOLERANCE);
         seekersRef.current.set(video, seeker);
       }
-      seeker.request(targetTime);
+      seeker.request(targetTime, isPlaying ? undefined : 0.001);
     });
-  }, [externalSeekVersion, currentTime, videosInfo, videosReady, hiddenSet]);
+  }, [
+    externalSeekVersion,
+    currentTime,
+    videosInfo,
+    videosReady,
+    hiddenSet,
+    isPlaying,
+  ]);
 
   // Drop seekers for elements that went away (episode / camera changes) and on unmount.
   useEffect(() => {

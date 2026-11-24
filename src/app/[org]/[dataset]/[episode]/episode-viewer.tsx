@@ -21,7 +21,12 @@ import {
 } from "@/context/time-context";
 import { FlaggedEpisodesProvider } from "@/context/flagged-episodes-context";
 import { AutoAnnotationPanel } from "@/components/auto-annotation-panel";
+import { SubtaskPanel } from "@/components/subtask-panel";
 import Sidebar from "@/components/side-nav";
+import type {
+  SubtaskAnnotationRow,
+  TaskSpec,
+} from "@/types/subtask-annotation.types";
 import LanguageSwitcher from "@/components/language-switcher";
 import { useLocale, useT } from "@/context/locale-context";
 import StatsPanel from "@/components/stats-panel";
@@ -63,6 +68,7 @@ const ActionInsightsPanel = lazy(
 );
 const FilteringPanel = lazy(() => import("@/components/filtering-panel"));
 const DoctorPanel = lazy(() => import("@/components/doctor-panel"));
+const DistributionPanel = lazy(() => import("@/components/distribution-panel"));
 const ParquetTablePanel = lazy(
   () => import("@/components/parquet-table-panel"),
 );
@@ -109,6 +115,7 @@ type ActiveTab =
   | "episodes"
   | "annotations"
   | "statistics"
+  | "distribution"
   | "frames"
   | "insights"
   | "doctor"
@@ -120,6 +127,7 @@ const ACTIVE_TABS: readonly ActiveTab[] = [
   "episodes",
   "annotations",
   "statistics",
+  "distribution",
   "frames",
   "insights",
   "doctor",
@@ -139,10 +147,12 @@ function isActiveTab(value: string | null): value is ActiveTab {
 function UrlTimeSync({
   episodeKey,
   suspendedRef,
+  selfWrittenTimeRef,
   transitioning,
 }: {
   episodeKey: number;
   suspendedRef: { current: boolean };
+  selfWrittenTimeRef: { current: string | null };
   transitioning: boolean;
 }) {
   const { currentTime, isPlaying } = useTimeState();
@@ -161,15 +171,25 @@ function UrlTimeSync({
     const currentSec = Math.floor(currentTime);
     if (currentTime > 0 && lastUrlSecondRef.current !== currentSec) {
       lastUrlSecondRef.current = currentSec;
+      const secText = currentSec.toString();
+      selfWrittenTimeRef.current = `${episodeKey}:${secText}`;
       const newParams = new URLSearchParams(searchParams.toString());
-      newParams.set("t", currentSec.toString());
+      newParams.set("t", secText);
       window.history.replaceState(
         {},
         "",
         `${window.location.pathname}?${newParams.toString()}`,
       );
     }
-  }, [isPlaying, currentTime, searchParams, suspendedRef, transitioning]);
+  }, [
+    episodeKey,
+    isPlaying,
+    currentTime,
+    searchParams,
+    selfWrittenTimeRef,
+    suspendedRef,
+    transitioning,
+  ]);
 
   return null;
 }
@@ -389,6 +409,11 @@ function EpisodeViewerInner({
     : null;
   const [tags, setTags] = useState<DatasetTags>(EMPTY_TAGS);
   const [tagsEditorOpen, setTagsEditorOpen] = useState(false);
+  const [subtaskTimeline, setSubtaskTimeline] = useState<{
+    rows: SubtaskAnnotationRow[];
+    taskSpec: TaskSpec | null;
+    episodeLength: number;
+  }>({ rows: [], taskSpec: null, episodeLength: 0 });
 
   useEffect(() => {
     if (!encodedDatasetPath) return;
@@ -836,6 +861,7 @@ function EpisodeViewerInner({
   // this guard, a paused `?t=` from the previous episode can issue a second
   // seek while the new media is already decoding its first frame.
   const appliedUrlTimeRef = useRef<string | null>(null);
+  const selfWrittenUrlTimeRef = useRef<string | null>(null);
   useEffect(() => {
     if (episodeLoading || selectedEpisodeId !== episodeId) return;
     const timeParam = searchParams.get("t");
@@ -844,6 +870,10 @@ function EpisodeViewerInner({
       return;
     }
     const applyKey = `${episodeId}:${timeParam}`;
+    if (selfWrittenUrlTimeRef.current === applyKey) {
+      appliedUrlTimeRef.current = applyKey;
+      return;
+    }
     if (appliedUrlTimeRef.current === applyKey) return;
     const timeValue = parseFloat(timeParam);
     if (!isNaN(timeValue)) {
@@ -950,6 +980,7 @@ function EpisodeViewerInner({
       <UrlTimeSync
         episodeKey={episodeId}
         suspendedRef={episodeSwitchRef}
+        selfWrittenTimeRef={selfWrittenUrlTimeRef}
         transitioning={episodeTransitioning}
       />
       {/* Top tab bar */}
@@ -974,6 +1005,11 @@ function EpisodeViewerInner({
           datasetInfo.codebase_version >= "v3.0" &&
           renderTab("urdf", t("viewer.tab.urdf"))}
         {renderTab("statistics", t("viewer.tab.statistics"))}
+        {renderTab(
+          "distribution",
+          t("viewer.tab.distribution"),
+          t("viewer.tab.distributionTitle"),
+        )}
         {renderTab("filtering", t("viewer.tab.filtering"))}
         {renderTab("frames", t("viewer.tab.frames"))}
         {renderTab("insights", t("viewer.tab.insights"))}
@@ -1126,6 +1162,17 @@ function EpisodeViewerInner({
                 />
               )}
 
+              {/* Subtask annotation panel */}
+              {encodedDatasetPath && (
+                <SubtaskPanel
+                  encodedPath={encodedDatasetPath}
+                  episodeId={episodeId}
+                  fps={datasetInfo.fps}
+                  episodeLengthFallback={data.episodeLength}
+                  onSubtaskStateChange={setSubtaskTimeline}
+                />
+              )}
+
               {/* Language Instruction */}
               {task && (
                 <div className="mb-6 panel p-4">
@@ -1172,7 +1219,14 @@ function EpisodeViewerInner({
                 )}
               </div>
 
-              <PlaybackBar />
+              <PlaybackBar
+                fps={datasetInfo.fps}
+                episodeLength={
+                  subtaskTimeline.episodeLength || data.episodeLength
+                }
+                subtaskRows={subtaskTimeline.rows}
+                taskSpec={subtaskTimeline.taskSpec}
+              />
             </>
           )}
 
@@ -1273,6 +1327,15 @@ function EpisodeViewerInner({
               episodeLengthStats={episodeLengthStats}
               loading={statsLoading}
             />
+          )}
+
+          {activeTab === "distribution" && (
+            <Suspense fallback={<Loading />}>
+              <DistributionPanel
+                encodedPath={encodedDatasetPath}
+                datasetName={datasetDisplayName}
+              />
+            </Suspense>
           )}
 
           {activeTab === "frames" && (

@@ -160,6 +160,7 @@ export type EpisodeData = {
   episodes: number[];
   ignoredColumns: string[];
   duration: number;
+  episodeLength?: number;
   task?: string;
 };
 
@@ -912,6 +913,7 @@ async function getEpisodeDataV2(
     episodes,
     ignoredColumns,
     duration,
+    episodeLength: chartData.length,
     task,
   };
 }
@@ -978,6 +980,7 @@ async function getEpisodeDataV3(
     episodes,
     ignoredColumns,
     duration,
+    episodeLength: episodeMetadata.length || undefined,
     task,
   };
 }

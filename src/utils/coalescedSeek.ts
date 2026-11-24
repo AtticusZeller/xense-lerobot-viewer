@@ -24,7 +24,7 @@ export interface SeekableMedia {
 
 export interface CoalescedSeeker {
   /** Ask the element to show `target` (seconds, media time). */
-  request(target: number): void;
+  request(target: number, overrideTolerance?: number): void;
   /** Detach the `seeked` listener and drop any pending target. */
   dispose(): void;
 }
@@ -37,7 +37,7 @@ export function createCoalescedSeeker(
   media: SeekableMedia,
   tolerance: number,
 ): CoalescedSeeker {
-  let pending: number | null = null;
+  let pending: { target: number; tol: number } | null = null;
   let inFlight: number | null = null;
 
   const apply = (target: number) => {
@@ -50,23 +50,26 @@ export function createCoalescedSeeker(
     if (pending === null) return;
     const next = pending;
     pending = null;
-    if (Math.abs(media.currentTime - next) > tolerance) apply(next);
+    if (Math.abs(media.currentTime - next.target) > next.tol) {
+      apply(next.target);
+    }
   };
 
   media.addEventListener("seeked", onSeeked);
 
   return {
-    request(target: number) {
+    request(target: number, overrideTolerance?: number) {
+      const tol = overrideTolerance ?? tolerance;
       if (media.seeking || inFlight !== null) {
         // Already heading somewhere: remember only the newest wish.
-        if (inFlight !== null && Math.abs(inFlight - target) <= tolerance) {
+        if (inFlight !== null && Math.abs(inFlight - target) <= tol) {
           pending = null;
         } else {
-          pending = target;
+          pending = { target, tol };
         }
         return;
       }
-      if (Math.abs(media.currentTime - target) > tolerance) apply(target);
+      if (Math.abs(media.currentTime - target) > tol) apply(target);
     },
     dispose() {
       pending = null;

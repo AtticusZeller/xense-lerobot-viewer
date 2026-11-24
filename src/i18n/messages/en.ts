@@ -281,6 +281,9 @@ export const en = {
     "Edit subtask / plan / memory / interjection / VQA atoms (lerobot v3.1 schema)",
   "viewer.tab.urdf": "3D Replay",
   "viewer.tab.statistics": "Statistics",
+  "viewer.tab.distribution": "Distribution",
+  "viewer.tab.distributionTitle":
+    "Dataset subtask distribution report (lerobot-check)",
   "viewer.tab.filtering": "Filtering",
   "viewer.tab.frames": "Frames",
   "viewer.tab.insights": "Action Insights",
@@ -843,6 +846,72 @@ export const en = {
   "err.fixHint":
     "Re-download the dataset payload with {cmd} so that {data} and {videos} are populated, or remove the empty entry from your local cache.",
   "err.back": "← Back to dataset browser",
+
+  // ── subtask annotation panel ────────────────────────────────────────────
+  "subtask.title": "Subtask",
+  "subtask.timelineLabel": "Subtasks",
+  "subtask.timelineClickHint": "Click to seek to a frame",
+  "subtask.markerContact": "{subtask} contact · frame {frame}",
+  "subtask.markerGrasp": "{subtask} grasp · frame {frame}",
+  "subtask.contact": "Contact",
+  "subtask.grasp": "Grasp",
+  "subtask.prevFrame": "Previous frame (← / ,)",
+  "subtask.nextFrame": "Next frame (→ / .)",
+  "subtask.currentFrame": "frame {frame} / {total} · {time} s",
+  "subtask.unsaved": "Unsaved",
+  "subtask.loading": "Loading subtask annotations…",
+  "subtask.taskSpecError": "Failed to parse task spec: {error}",
+  "subtask.jumpPlaceholder": "frame #",
+  "subtask.jump": "Go",
+  "subtask.addBoundary": "+ Split @ {frame}",
+  "subtask.shortcutsHint": "←/→ or ,/. ±1 frame · Shift ±10 · Ctrl+S save",
+  "subtask.emptyEpisode": "No subtask rows for this episode yet.",
+  "subtask.createAllFromSpec": "Create all {count} subtasks from spec",
+  "subtask.createSingle": "+ {name} only",
+  "subtask.noTaskSpecHint":
+    "No task spec file found under .xense-viewer/subtasks/. Place the dataset's task_spec.yaml there or create a manual row.",
+  "subtask.createManual": "Create single row",
+  "subtask.colSubtask": "Subtask",
+  "subtask.colStart": "Start",
+  "subtask.colEnd": "End",
+  "subtask.colSuccess": "Success",
+  "subtask.colAnnotator": "Annotator",
+  "subtask.colNote": "Note",
+  "subtask.colActions": "Boundary",
+  "subtask.seekTo": "Seek to frame {frame}",
+  "subtask.setBoundaryTitle":
+    "Move boundary to frame {frame} (moves neighbour too)",
+  "subtask.setHere": "Set",
+  "subtask.setContactTitle": "Set contact to frame {frame}",
+  "subtask.setGraspTitle": "Set grasp to frame {frame}",
+  "subtask.successTrue": "true",
+  "subtask.successFalse": "false",
+  "subtask.notePlaceholder": "note…",
+  "subtask.removeBoundaryTitle": "Remove boundary and merge into adjacent row",
+  "subtask.removeBoundary": "Merge",
+  "subtask.validationIssues_one":
+    "{count} validation issue — fix before saving",
+  "subtask.validationIssues_other":
+    "{count} validation issues — fix before saving",
+  "subtask.valid": "Checks passed",
+  "subtask.revert": "Revert",
+  "subtask.save": "Save CSV",
+  "subtask.savedChanged_one": "Saved ({count} row marked human)",
+  "subtask.savedChanged_other": "Saved ({count} rows marked human)",
+  "subtask.savedNoDiff": "Saved (no changes)",
+
+  // ── data distribution report tab ────────────────────────────────────────
+  "dist.title": "Data Distribution",
+  "dist.loading": "Checking distribution report…",
+  "dist.loadError": "Failed to load distribution report status.",
+  "dist.missingTitle": "No distribution report yet",
+  "dist.missingDesc":
+    "Run lerobot-check report to generate the offline HTML distribution report (including Agent advice when provided), then click Refresh.",
+  "dist.expectedPath": "Expected report path",
+  "dist.runCommand": "Generate report command",
+  "dist.copied": "Copied",
+  "dist.refresh": "Refresh",
+  "dist.openNewTab": "Open in new tab",
 } as const;
 
 export type MessageKey = keyof typeof en;
