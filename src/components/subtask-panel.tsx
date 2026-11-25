@@ -17,7 +17,11 @@ import type {
   TaskSpec,
 } from "@/types/subtask-annotation.types";
 import { copyTextToClipboard } from "@/utils/clipboard";
-import { resolveDraftAnnotators } from "@/utils/subtaskCsv";
+import {
+  isEpisodeRowsReviewed,
+  markEpisodeRowsReviewed,
+  resolveDraftAnnotators,
+} from "@/utils/subtaskCsv";
 import {
   activeSubtaskIndexAt,
   addBoundaryAtFrame,
@@ -163,7 +167,11 @@ export function SubtaskPanel({
     [draftRows, currentFrame],
   );
 
-  const { rows: resolvedDraftRows, changedIndices } = useMemo(
+  const {
+    rows: resolvedDraftRows,
+    changedIndices,
+    previousAnnotators,
+  } = useMemo(
     () => resolveDraftAnnotators(persistedRows, draftRows),
     [persistedRows, draftRows],
   );
@@ -172,6 +180,21 @@ export function SubtaskPanel({
     if (draftRows.length !== persistedRows.length) return true;
     return changedIndices.size > 0;
   }, [draftRows.length, persistedRows.length, changedIndices.size]);
+
+  const isCurrentEpisodeReviewed = useMemo(
+    () => isEpisodeRowsReviewed(resolvedDraftRows),
+    [resolvedDraftRows],
+  );
+
+  const reviewProgress = useMemo(() => {
+    const base = payload?.reviewProgress;
+    if (!base) return null;
+    return {
+      annotatedCount: base.annotatedEpisodes.length,
+      reviewedCount: base.reviewedEpisodes.length,
+      reviewedList: base.reviewedEpisodes,
+    };
+  }, [payload]);
 
   const issues = useMemo(() => {
     if (draftRows.length === 0 && persistedRows.length === 0) return [];
@@ -410,6 +433,12 @@ export function SubtaskPanel({
     ]);
   };
 
+  const handleMarkEpisodeReviewed = () => {
+    if (draftRows.length === 0) return;
+    setSaveMessage(null);
+    setDraftRows((prev) => markEpisodeRowsReviewed(prev));
+  };
+
   const handleRevert = () => {
     setSaveMessage(null);
     setDraftRows(persistedRows);
@@ -477,6 +506,30 @@ export function SubtaskPanel({
         )}
 
         <div className="ml-auto flex flex-wrap items-center gap-2 text-xs">
+          {reviewProgress && reviewProgress.annotatedCount > 0 && (
+            <span
+              className={`rounded border px-1.5 py-0.5 font-mono text-[11px] tabular ${
+                reviewProgress.reviewedCount > 0
+                  ? "border-emerald-400/35 bg-emerald-500/15 text-emerald-200"
+                  : "border-white/10 bg-white/5 text-slate-400"
+              }`}
+              title={
+                reviewProgress.reviewedList.length > 0
+                  ? `ep ${reviewProgress.reviewedList.join(", ")}`
+                  : undefined
+              }
+            >
+              {t("subtask.reviewProgress", {
+                reviewed: reviewProgress.reviewedCount,
+                annotated: reviewProgress.annotatedCount,
+              })}
+            </span>
+          )}
+          {isCurrentEpisodeReviewed && !isDirty && (
+            <span className="rounded border border-emerald-400/40 bg-emerald-500/15 px-1.5 py-0.5 text-[11px] text-emerald-200">
+              {t("subtask.episodeReviewed")}
+            </span>
+          )}
           <span className="tabular font-mono text-slate-300">
             {t("subtask.currentFrame", {
               frame: currentFrame,
@@ -970,8 +1023,10 @@ export function SubtaskPanel({
                                   ] ?? "border-white/10 text-slate-300"
                                 }`}
                               >
-                                {willBecomeHuman && row.annotator !== "human"
-                                  ? `${row.annotator} → human`
+                                {willBecomeHuman &&
+                                previousAnnotators[idx] &&
+                                previousAnnotators[idx] !== "human"
+                                  ? `${previousAnnotators[idx]} → human`
                                   : resolvedDraftRows[idx].annotator}
                               </span>
                             </td>
@@ -1081,7 +1136,18 @@ export function SubtaskPanel({
                   </span>
                 )}
 
-                <div className="ml-auto flex items-center gap-2">
+                <div className="ml-auto flex flex-wrap items-center gap-2">
+                  {draftRows.length > 0 && (
+                    <button
+                      type="button"
+                      disabled={isCurrentEpisodeReviewed}
+                      onClick={handleMarkEpisodeReviewed}
+                      title={t("subtask.markReviewedTitle")}
+                      className="rounded-md border border-emerald-400/40 bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-emerald-100 hover:bg-emerald-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {t("subtask.markReviewed")}
+                    </button>
+                  )}
                   {isDirty && (
                     <button
                       type="button"

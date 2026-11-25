@@ -2,6 +2,7 @@ import {
   VALID_SUBTASK_ANNOTATORS,
   type SubtaskAnnotationRow,
   type SubtaskAnnotator,
+  type SubtaskReviewProgress,
 } from "@/types/subtask-annotation.types";
 
 export const SUBTASK_CSV_COLUMNS = [
@@ -335,12 +336,57 @@ export function rowContentEquals(
   );
 }
 
+function isPromotedToHuman(
+  previous: Pick<SubtaskAnnotationRow, "annotator">,
+  draft: Pick<SubtaskAnnotationRow, "annotator">,
+): boolean {
+  return draft.annotator === "human" && previous.annotator !== "human";
+}
+
+export function markEpisodeRowsReviewed(
+  rows: readonly SubtaskAnnotationRow[],
+): SubtaskAnnotationRow[] {
+  return rows.map((row) =>
+    row.annotator === "human" ? row : { ...row, annotator: "human" },
+  );
+}
+
+export function isEpisodeRowsReviewed(
+  rows: readonly SubtaskAnnotationRow[],
+): boolean {
+  return rows.length > 0 && rows.every((row) => row.annotator === "human");
+}
+
+export function summarizeSubtaskReviewProgress(
+  rows: readonly SubtaskAnnotationRow[],
+): SubtaskReviewProgress {
+  const byEpisode = new Map<number, SubtaskAnnotationRow[]>();
+  for (const row of rows) {
+    let list = byEpisode.get(row.episode_index);
+    if (!list) {
+      list = [];
+      byEpisode.set(row.episode_index, list);
+    }
+    list.push(row);
+  }
+  const annotatedEpisodes = [...byEpisode.keys()].sort((a, b) => a - b);
+  const reviewedEpisodes = annotatedEpisodes.filter((ep) =>
+    isEpisodeRowsReviewed(byEpisode.get(ep) ?? []),
+  );
+  return { annotatedEpisodes, reviewedEpisodes };
+}
+
 export function resolveDraftAnnotators(
   previousRows: readonly SubtaskAnnotationRow[],
   draftRows: readonly SubtaskAnnotationRow[],
-): { rows: SubtaskAnnotationRow[]; changedIndices: Set<number> } {
+): {
+  rows: SubtaskAnnotationRow[];
+  changedIndices: Set<number>;
+  previousAnnotators: Array<SubtaskAnnotator | null>;
+} {
   const usedPrev = new Set<number>();
   const changedIndices = new Set<number>();
+  const previousAnnotators: Array<SubtaskAnnotator | null> = [];
 
   const rows = draftRows.map((draft, idx) => {
     const matchIdx = previousRows.findIndex(
@@ -349,12 +395,25 @@ export function resolveDraftAnnotators(
     );
     if (matchIdx !== -1) {
       usedPrev.add(matchIdx);
+      const prevRow = previousRows[matchIdx];
+      previousAnnotators.push(prevRow.annotator);
+      if (isPromotedToHuman(prevRow, draft)) {
+        changedIndices.add(idx);
+        return {
+          ...draft,
+          note: draft.note.trim(),
+          annotator: "human" as const,
+        };
+      }
       return {
         ...draft,
         note: draft.note.trim(),
-        annotator: previousRows[matchIdx].annotator,
+        annotator: prevRow.annotator,
       };
     }
+    previousAnnotators.push(
+      idx < previousRows.length ? previousRows[idx].annotator : null,
+    );
     changedIndices.add(idx);
     return {
       ...draft,
@@ -363,7 +422,7 @@ export function resolveDraftAnnotators(
     };
   });
 
-  return { rows, changedIndices };
+  return { rows, changedIndices, previousAnnotators };
 }
 
 export function mergeEpisodeIntoCsv(
@@ -405,7 +464,19 @@ export function mergeEpisodeIntoCsv(
     );
     if (matchIdx !== -1) {
       usedPrev.add(matchIdx);
-      return existingEpisodeRecords[matchIdx];
+      const existing = existingEpisodeRecords[matchIdx];
+      if (!isPromotedToHuman(existing.row, draft)) {
+        return existing;
+      }
+      changedRowCount += 1;
+      const promotedRow: SubtaskAnnotationRow = {
+        ...existing.row,
+        annotator: "human",
+      };
+      return {
+        row: promotedRow,
+        rawRecord: formatSubtaskCsvRow(promotedRow, parsed.columns),
+      };
     }
     changedRowCount += 1;
     const row: SubtaskAnnotationRow = {

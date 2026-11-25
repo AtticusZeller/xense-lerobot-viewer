@@ -1,11 +1,14 @@
 import { describe, expect, it } from "bun:test";
 import type { SubtaskAnnotationRow } from "@/types/subtask-annotation.types";
 import {
+  isEpisodeRowsReviewed,
+  markEpisodeRowsReviewed,
   mergeEpisodeIntoCsv,
   parseSubtaskCsv,
   resolveDraftAnnotators,
   serializeSubtaskCsv,
   serializeSubtaskRows,
+  summarizeSubtaskReviewProgress,
 } from "../subtaskCsv";
 
 const SAMPLE_CSV = [
@@ -204,5 +207,76 @@ describe("subtaskCsv", () => {
     expect(preview.changedIndices.has(1)).toBe(true);
     expect(preview.rows[0].annotator).toBe("converted");
     expect(preview.rows[1].annotator).toBe("human");
+    expect(preview.previousAnnotators).toEqual(["converted", "agent"]);
+  });
+
+  it("marks all rows of the current episode reviewed (annotator=human) while leaving other columns and other episodes byte-for-byte identical", () => {
+    const parsed = parseSubtaskCsv(SAMPLE_CSV);
+    const ep0 = parsed.records
+      .filter((r) => r.row.episode_index === 0)
+      .map((r) => ({ ...r.row }));
+
+    expect(isEpisodeRowsReviewed(ep0)).toBe(false);
+
+    // Mark episode 0 reviewed in draft (without modifying any boundary/column)
+    const reviewedDraft = markEpisodeRowsReviewed(ep0);
+    expect(isEpisodeRowsReviewed(reviewedDraft)).toBe(true);
+
+    // Draft preview marks both non-human rows dirty and tracks previous annotators for UI preview
+    const preview = resolveDraftAnnotators(ep0, reviewedDraft);
+    expect([...preview.changedIndices]).toEqual([0, 1]);
+    expect(preview.rows.map((r) => r.annotator)).toEqual(["human", "human"]);
+    expect(preview.previousAnnotators).toEqual(["converted", "agent"]);
+
+    // Reverting draft back to persisted rows before save clears all dirty changes cleanly
+    const revertedPreview = resolveDraftAnnotators(ep0, ep0);
+    expect(revertedPreview.changedIndices.size).toBe(0);
+    expect(revertedPreview.rows.map((r) => r.annotator)).toEqual([
+      "converted",
+      "agent",
+    ]);
+
+    // Saving reviewed draft rewrites episode 0 rows with annotator=human only; episode 1 stays byte-identical
+    const merged = mergeEpisodeIntoCsv(SAMPLE_CSV, 0, preview.rows, {
+      repoId: "Xense/egg_carton",
+      revision: "4b03b879c274e11040d2ad882b56172354d0cb9d",
+    });
+
+    expect(merged.changedRowCount).toBe(2);
+    const beforeLines = SAMPLE_CSV.split("\n");
+    const afterLines = merged.csvText.split("\n");
+    expect(afterLines[0]).toBe(beforeLines[0]);
+    expect(afterLines[1]).toBe(
+      "Xense/egg_carton,4b03b879c274e11040d2ad882b56172354d0cb9d,0,open_carton,0,900,,120,true,human,",
+    );
+    expect(afterLines[2]).toBe(
+      'Xense/egg_carton,4b03b879c274e11040d2ad882b56172354d0cb9d,0,place_eggs,900,2779,940,960,true,human,"note with, comma and ""quotes"""',
+    );
+    // Episode 1 rows and trailing newline remain byte-for-byte identical
+    expect(afterLines[3]).toBe(beforeLines[3]);
+    expect(afterLines[4]).toBe(beforeLines[4]);
+    expect(afterLines[5]).toBe(beforeLines[5]);
+
+    // Progress summary reflects episode 0 reviewed, episode 1 still unreviewed
+    const afterParsed = parseSubtaskCsv(merged.csvText);
+    expect(
+      summarizeSubtaskReviewProgress(afterParsed.records.map((r) => r.row)),
+    ).toEqual({
+      annotatedEpisodes: [0, 1],
+      reviewedEpisodes: [0],
+    });
+
+    // Re-saving an already reviewed episode produces 0 changes and byte-identical CSV
+    const reMerged = mergeEpisodeIntoCsv(
+      merged.csvText,
+      0,
+      merged.updatedRows,
+      {
+        repoId: "Xense/egg_carton",
+        revision: "4b03b879c274e11040d2ad882b56172354d0cb9d",
+      },
+    );
+    expect(reMerged.changedRowCount).toBe(0);
+    expect(reMerged.csvText).toBe(merged.csvText);
   });
 });

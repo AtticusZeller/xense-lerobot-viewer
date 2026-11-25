@@ -9,7 +9,11 @@ import type {
   SubtaskValidationIssue,
   TaskSpec,
 } from "@/types/subtask-annotation.types";
-import { mergeEpisodeIntoCsv, parseSubtaskCsv } from "@/utils/subtaskCsv";
+import {
+  mergeEpisodeIntoCsv,
+  parseSubtaskCsv,
+  summarizeSubtaskReviewProgress,
+} from "@/utils/subtaskCsv";
 import { validateEpisodeSubtasks } from "@/utils/subtaskEditor";
 import { parseTaskSpecYaml } from "@/utils/taskSpecYaml";
 
@@ -182,11 +186,13 @@ export async function loadEpisodeSubtaskState(
   ]);
 
   let rows: SubtaskAnnotationRow[] = [];
+  let reviewProgress = summarizeSubtaskReviewProgress([]);
   if (csvText !== null && csvText.trim()) {
     const parsed = parseSubtaskCsv(csvText);
-    rows = parsed.records
-      .filter((rec) => rec.row.episode_index === episodeIndex)
-      .map((rec) => rec.row)
+    const allRows = parsed.records.map((rec) => rec.row);
+    reviewProgress = summarizeSubtaskReviewProgress(allRows);
+    rows = allRows
+      .filter((row) => row.episode_index === episodeIndex)
       .sort((a, b) => a.start - b.start || a.end - b.end);
   }
 
@@ -201,6 +207,7 @@ export async function loadEpisodeSubtaskState(
     taskSpec: specResult.taskSpec,
     taskSpecError: specResult.error,
     rows,
+    reviewProgress,
   };
 }
 
@@ -253,6 +260,10 @@ export async function saveEpisodeSubtaskRows(
 
   await writeFileAtomic(paths.csvPath, csvText);
 
+  const reviewProgress = summarizeSubtaskReviewProgress(
+    parseSubtaskCsv(csvText).records.map((rec) => rec.row),
+  );
+
   return {
     changedRowCount,
     payload: {
@@ -266,6 +277,7 @@ export async function saveEpisodeSubtaskRows(
       taskSpec: specResult.taskSpec,
       taskSpecError: specResult.error,
       rows: updatedRows,
+      reviewProgress,
     },
   };
 }

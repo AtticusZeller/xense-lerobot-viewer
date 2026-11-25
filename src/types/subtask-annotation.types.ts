@@ -51,6 +51,11 @@ export interface SubtaskValidationIssue {
   message: string;
 }
 
+export interface SubtaskReviewProgress {
+  annotatedEpisodes: number[];
+  reviewedEpisodes: number[];
+}
+
 export interface SubtaskEpisodePayload {
   repoId: string;
   revision: string;
@@ -62,6 +67,7 @@ export interface SubtaskEpisodePayload {
   taskSpec: TaskSpec | null;
   taskSpecError: string | null;
   rows: SubtaskAnnotationRow[];
+  reviewProgress: SubtaskReviewProgress;
 }
 
 export interface SubtaskSaveResponse extends SubtaskEpisodePayload {

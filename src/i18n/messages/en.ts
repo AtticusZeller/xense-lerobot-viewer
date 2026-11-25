@@ -900,6 +900,11 @@ export const en = {
   "subtask.validationIssues_other":
     "{count} validation issues — fix before saving",
   "subtask.valid": "Checks passed",
+  "subtask.markReviewed": "Mark episode reviewed",
+  "subtask.markReviewedTitle":
+    "Set annotator=human on all rows of this episode without changing other columns",
+  "subtask.episodeReviewed": "Reviewed",
+  "subtask.reviewProgress": "Reviewed {reviewed}/{annotated} ep",
   "subtask.revert": "Revert",
   "subtask.save": "Save CSV",
   "subtask.savedChanged_one": "Saved ({count} row marked human)",
@@ -926,6 +931,7 @@ export const en = {
   "dist.cliUnconfigured":
     "LEROBOT_CHECK_DIR is not set; run this command in a terminal:",
   "dist.provAnnotated": "Annotated",
+  "dist.provReviewed": "Reviewed",
   "dist.unreviewedAgentWarn": "{count} unreviewed agent rows",
   "dist.episodeSelection": "Episode groups",
   "dist.addGroup": "Add group",

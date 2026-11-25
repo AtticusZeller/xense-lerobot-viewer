@@ -867,6 +867,11 @@ export const zh: Record<MessageKey, string> = {
   "subtask.validationIssues_one": "{count} 个校验问题 —— 修复后才能保存",
   "subtask.validationIssues_other": "{count} 个校验问题 —— 修复后才能保存",
   "subtask.valid": "校验通过",
+  "subtask.markReviewed": "标记本 episode 已复核",
+  "subtask.markReviewedTitle":
+    "将本 episode 所有行的来源设为 human（不改动其他列），保存后生效",
+  "subtask.episodeReviewed": "已复核",
+  "subtask.reviewProgress": "已复核 {reviewed}/{annotated} ep",
   "subtask.revert": "撤销修改",
   "subtask.save": "保存 CSV",
   "subtask.savedChanged_one": "已保存（{count} rows 标记为 human）",
@@ -892,6 +897,7 @@ export const zh: Record<MessageKey, string> = {
   "dist.cliUnconfigured":
     "未配置 LEROBOT_CHECK_DIR，请复制以下命令在终端运行：",
   "dist.provAnnotated": "已标注",
+  "dist.provReviewed": "已复核",
   "dist.unreviewedAgentWarn": "含 {count} 项未复核 agent 标注",
   "dist.episodeSelection": "Episode 分组",
   "dist.addGroup": "添加分组",

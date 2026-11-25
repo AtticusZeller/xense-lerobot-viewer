@@ -341,6 +341,14 @@ export default function DistributionPanel({
 
   const prov = distribution.provenance;
   const counts = recomputedSummary.annotatorCounts;
+  const activeDistributionEpisodes = distribution.episodes.filter((ep) =>
+    selectedEpisodes.has(ep.episode_index),
+  );
+  const reviewedEpisodeCount = activeDistributionEpisodes.filter(
+    (ep) =>
+      ep.subtasks.length > 0 &&
+      ep.subtasks.every((row) => row.annotator === "human"),
+  ).length;
 
   return (
     <div className="flex flex-col gap-4 pb-6">
@@ -357,6 +365,15 @@ export default function DistributionPanel({
             <span>
               {t("dist.provAnnotated")}: {prov.annotated_episodes.length}/
               {prov.dataset_total_episodes}
+            </span>
+            <span>·</span>
+            <span
+              className={
+                reviewedEpisodeCount > 0 ? "text-emerald-300" : undefined
+              }
+            >
+              {t("dist.provReviewed")}: {reviewedEpisodeCount}/
+              {activeDistributionEpisodes.length} ep
             </span>
             <span>·</span>
             <span>
