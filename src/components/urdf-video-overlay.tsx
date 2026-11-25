@@ -13,6 +13,7 @@ import {
 import { useT } from "@/context/locale-context";
 import type { VideoInfo } from "@/types";
 import { THRESHOLDS } from "@/utils/constants";
+import { isTactileVideo } from "@/utils/tactileVideos";
 import { groupUrdfReplayVideos } from "@/utils/urdfReplayVideos";
 import { mediaTimeFromEpisodeTime } from "@/utils/videoSegments";
 
@@ -122,34 +123,63 @@ function ReplayVideoTile({
 function SideVideoGroup({
   active,
   episodeTimeSeconds,
+  onToggleTactile,
   playing,
   replayRevision,
+  showTactile,
   videos,
 }: {
   active: boolean;
   episodeTimeSeconds: number;
+  onToggleTactile: () => void;
   playing: boolean;
   replayRevision: number;
+  showTactile: boolean;
   videos: VideoInfo[];
 }) {
+  const t = useT();
   const [primary, ...secondary] = videos;
   if (!primary) return null;
+  const tactileCount = secondary.filter((video) =>
+    isTactileVideo(video.filename),
+  ).length;
+  // Collapsed tactile tiles are unmounted, not hidden, so they cost no
+  // decoder; a tile mounted on expand seeks itself on `loadedmetadata`.
+  const shownSecondary = showTactile
+    ? secondary
+    : secondary.filter((video) => !isTactileVideo(video.filename));
   return (
     <div className="space-y-1.5">
-      <ReplayVideoTile
-        // Episodes in a v3 shard only change the segment window. Keep the
-        // media element alive for the same camera/file and let the tile seek
-        // to the new segment instead of restarting metadata/decode loading.
-        key={`${primary.filename}:${primary.url}`}
-        active={active}
-        episodeTimeSeconds={episodeTimeSeconds}
-        playing={playing}
-        replayRevision={replayRevision}
-        video={primary}
-      />
-      {secondary.length > 0 && (
+      {/* The toggle sits on the wrist tile's top edge: the group's resize
+          handles occupy its bottom corners. */}
+      <div className="relative">
+        <ReplayVideoTile
+          // Episodes in a v3 shard only change the segment window. Keep the
+          // media element alive for the same camera/file and let the tile seek
+          // to the new segment instead of restarting metadata/decode loading.
+          key={`${primary.filename}:${primary.url}`}
+          active={active}
+          episodeTimeSeconds={episodeTimeSeconds}
+          playing={playing}
+          replayRevision={replayRevision}
+          video={primary}
+        />
+        {tactileCount > 0 && (
+          <button
+            type="button"
+            aria-expanded={showTactile}
+            className="absolute right-1 top-1 rounded bg-slate-950/75 px-1.5 py-0.5 text-[9px] font-medium leading-none text-slate-100 shadow backdrop-blur-sm transition-colors hover:text-cyan-300"
+            onClick={onToggleTactile}
+          >
+            {showTactile
+              ? t("urdf.hideTactile")
+              : t("urdf.showTactile", { count: tactileCount })}
+          </button>
+        )}
+      </div>
+      {shownSecondary.length > 0 && (
         <div className="grid grid-cols-2 gap-1.5">
-          {secondary.map((video) => (
+          {shownSecondary.map((video) => (
             <ReplayVideoTile
               key={`${video.filename}:${video.url}`}
               active={active}
@@ -403,6 +433,8 @@ export default function UrdfVideoOverlay({
 }) {
   const t = useT();
   const [frontLayer, setFrontLayer] = useState<VideoLayerId>("center");
+  // One switch for both hands: tactile tiles start collapsed.
+  const [showTactile, setShowTactile] = useState(false);
   const groups = useMemo(() => groupUrdfReplayVideos(videos), [videos]);
   const hasAnyVideo =
     groups.left.length > 0 ||
@@ -411,6 +443,10 @@ export default function UrdfVideoOverlay({
   if (!hasAnyVideo) return null;
 
   const shared = { active, episodeTimeSeconds, playing, replayRevision };
+  const tactileToggle = {
+    showTactile,
+    onToggleTactile: () => setShowTactile((open) => !open),
+  };
   const hasSingleHead = groups.center.length === 1;
   const resizeLabels = {
     resetLabel: t("urdf.resetVideoSize"),
@@ -432,7 +468,7 @@ export default function UrdfVideoOverlay({
           onActivate={() => setFrontLayer("left")}
           resizeEdges={["right"]}
         >
-          <SideVideoGroup {...shared} videos={groups.left} />
+          <SideVideoGroup {...shared} {...tactileToggle} videos={groups.left} />
         </ResizableVideoGroup>
       )}
 
@@ -478,7 +514,11 @@ export default function UrdfVideoOverlay({
           onActivate={() => setFrontLayer("right")}
           resizeEdges={["left"]}
         >
-          <SideVideoGroup {...shared} videos={groups.right} />
+          <SideVideoGroup
+            {...shared}
+            {...tactileToggle}
+            videos={groups.right}
+          />
         </ResizableVideoGroup>
       )}
     </div>

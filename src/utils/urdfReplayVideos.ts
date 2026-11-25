@@ -4,7 +4,7 @@ export type UrdfReplayVideoRegion = "center" | "left" | "right";
 
 export type UrdfReplayVideoGroups = Record<UrdfReplayVideoRegion, VideoInfo[]>;
 
-function videoNameTokens(filename: string): string[] {
+export function videoNameTokens(filename: string): string[] {
   return filename
     .trim()
     .toLowerCase()

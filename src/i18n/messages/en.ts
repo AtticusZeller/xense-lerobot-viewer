@@ -777,6 +777,8 @@ export const en = {
   "urdf.hintSeek5": "back/forward 5 seconds",
   "urdf.resizeVideo": "Drag to resize video window",
   "urdf.resetVideoSize": "Double-click to reset size",
+  "urdf.showTactile": "Show tactile · {count}",
+  "urdf.hideTactile": "Hide tactile",
   "urdf.tacCapMapping": "Gripper Mapping",
   "urdf.tacCapMapped": "({mapped}/{total} grippers mapped)",
   "urdf.tacCapSide": "Gripper",

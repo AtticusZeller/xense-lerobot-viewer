@@ -314,6 +314,15 @@ means and who is allowed to keep rendering.
   Putting `segmentStart` back in the key throws away the browser's buffer on
   every switch. `SimpleVideosPlayer` takes `loading` and pauses the retained
   media immediately, so the previous episode can't keep playing underneath.
+- **Readiness counts mounted `<video>` elements, not `videosInfo`.** A hidden
+  camera renders no element and can never report ready; counting
+  `videosInfo.length` put every switch with a hidden camera behind the 10 s
+  fallback. Tactile streams start hidden (`defaultHiddenVideoFilenames`), so
+  this is the common path. The playback listeners (timeupdate / loop / play)
+  live in their own effect keyed on `hiddenVideos`, and a restored camera is
+  seeked to the clock before it plays — otherwise a shared v3 MP4 opens on
+  another episode's footage. Don't fold that effect back into readiness:
+  re-running readiness pauses every camera and rewinds it to the segment start.
 
 ### Viewer keyboard shortcuts
 

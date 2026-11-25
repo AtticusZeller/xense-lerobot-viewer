@@ -13,6 +13,7 @@ import {
   mediaTimeFromEpisodeTime,
 } from "@/utils/videoSegments";
 import { useT } from "@/context/locale-context";
+import { defaultHiddenVideoFilenames } from "@/utils/tactileVideos";
 
 const THRESHOLDS = {
   VIDEO_SYNC_TOLERANCE: 0.2,
@@ -62,7 +63,9 @@ export const SimpleVideosPlayer = ({
       videoRefs.current[idx] = el;
     });
   }
-  const [hiddenVideos, setHiddenVideos] = React.useState<string[]>([]);
+  const [hiddenVideos, setHiddenVideos] = React.useState<string[]>(() =>
+    defaultHiddenVideoFilenames(videosInfo),
+  );
   const [enlargedVideo, setEnlargedVideo] = React.useState<string | null>(null);
   const [showHiddenMenu, setShowHiddenMenu] = React.useState(false);
   const [videosReady, setVideosReady] = React.useState(false);
@@ -77,6 +80,18 @@ export const SimpleVideosPlayer = ({
   // context's version moves past this, an external seek happened and we
   // need to drive every video to the new position.
   const lastSeekVersionRef = useRef(externalSeekVersion);
+
+  // Read by the playback-listener effect, which must not re-run on every
+  // clock tick.
+  const currentTimeRef = useRef(currentTime);
+  useEffect(() => {
+    currentTimeRef.current = currentTime;
+  }, [currentTime]);
+
+  // Elements already placed on the current episode's timeline, by the
+  // readiness effect or by a restore. Anything mounted outside that set is a
+  // camera the user just un-hid.
+  const positionedVideosRef = useRef(new WeakSet<HTMLVideoElement>());
 
   // Mirror firstVisibleIdx into a ref so the videos-ready effect doesn't have
   // to depend on it. If it did, hiding the first camera would tear the whole
@@ -154,6 +169,16 @@ export const SimpleVideosPlayer = ({
     let readyCount = 0;
     let resolved = false;
 
+    // Capture the nodes this effect actually attaches to. React can clear a
+    // callback ref during a keyed media replacement before running the effect
+    // cleanup; reading `videoRefs.current` there would then miss the old node
+    // and leave its listeners alive.
+    const attachedVideos = videoRefs.current.slice();
+    // A hidden camera renders no <video>, so it can never report ready.
+    // Counting `videosInfo.length` here made every switch with a hidden
+    // camera sit behind the 10-second fallback.
+    const expectedCount = attachedVideos.filter(Boolean).length;
+
     const markReady = () => {
       if (cancelled || resolved) return;
       resolved = true;
@@ -165,10 +190,118 @@ export const SimpleVideosPlayer = ({
     const checkReady = () => {
       if (cancelled) return;
       readyCount++;
-      if (readyCount >= videosInfo.length) markReady();
+      if (readyCount >= expectedCount) markReady();
     };
 
     const timeout = setTimeout(markReady, VIDEO_READY_TIMEOUT_MS);
+
+    attachedVideos.forEach((video, index) => {
+      if (!video) return;
+      const info = videosInfo[index];
+      positionedVideosRef.current.add(video);
+
+      let countedAsReady = false;
+      const markVideoReady = () => {
+        if (cancelled || countedAsReady) return;
+        countedAsReady = true;
+        checkReady();
+      };
+
+      // A seek inside an already-loaded MP4 does not reliably emit another
+      // `loadeddata`. That made a fast shared-shard episode switch sit behind
+      // the 10-second fallback even though the requested frame was already
+      // decoded. Treat `seeked`/`canplay` as the authoritative completion
+      // signals, and count each camera only after it is at the new segment.
+      const handleSegmentReady = info.isSegmented
+        ? () => {
+            if (cancelled || countedAsReady) return;
+            const targetTime = mediaTimeFromEpisodeTime(info, 0);
+            if (
+              Math.abs(video.currentTime - targetTime) >
+              THRESHOLDS.VIDEO_SEGMENT_BOUNDARY
+            ) {
+              if (
+                video.readyState >= HTMLMediaElement.HAVE_METADATA &&
+                !video.seeking
+              ) {
+                video.currentTime = targetTime;
+              }
+              return;
+            }
+            if (
+              video.seeking ||
+              video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
+            ) {
+              return;
+            }
+            markVideoReady();
+          }
+        : null;
+
+      // Already-loaded videos (cached or fast network) may not re-fire a
+      // readiness event after we attach the listener. Check the current state
+      // in a microtask as well; otherwise only the 10s fallback would unfreeze
+      // the UI.
+      if (info.isSegmented && handleSegmentReady) {
+        video.addEventListener("loadeddata", handleSegmentReady);
+        video.addEventListener("canplay", handleSegmentReady);
+        video.addEventListener("seeked", handleSegmentReady);
+
+        const targetTime = mediaTimeFromEpisodeTime(info, 0);
+        if (
+          video.readyState >= HTMLMediaElement.HAVE_METADATA &&
+          !video.seeking &&
+          Math.abs(video.currentTime - targetTime) >
+            THRESHOLDS.VIDEO_SEGMENT_BOUNDARY
+        ) {
+          video.currentTime = targetTime;
+        }
+        queueMicrotask(handleSegmentReady);
+      } else if (!info.isSegmented) {
+        if (video.readyState >= HTMLMediaElement.HAVE_ENOUGH_DATA) {
+          queueMicrotask(checkReady);
+        } else {
+          video.addEventListener("canplaythrough", checkReady, { once: true });
+        }
+      }
+
+      videoEventCleanup.set(video, () => {
+        if (handleSegmentReady) {
+          video.removeEventListener("loadeddata", handleSegmentReady);
+          video.removeEventListener("canplay", handleSegmentReady);
+          video.removeEventListener("seeked", handleSegmentReady);
+        }
+        video.removeEventListener("canplaythrough", checkReady);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+      attachedVideos.forEach((video) => {
+        if (!video) return;
+        video.pause();
+        const cleanup = videoEventCleanup.get(video);
+        if (cleanup) {
+          cleanup();
+          videoEventCleanup.delete(video);
+        }
+      });
+    };
+    // firstVisibleIdx intentionally omitted — we read it via ref so hiding
+    // the first camera doesn't reset readiness (see the comment near
+    // firstVisibleIdxRef above).
+    // onVideosReady intentionally omitted — read via onVideosReadyRef so
+    // an inline parent prop doesn't tear this effect down on every render.
+  }, [loading, videosInfo, setIsPlaying]);
+
+  // Playback listeners for whichever cameras are mounted right now. Kept apart
+  // from readiness so hiding or restoring a camera re-attaches them without
+  // re-running readiness, which would pause every camera and send it back to
+  // the segment start.
+  useEffect(() => {
+    if (loading) return;
+    let cancelled = false;
 
     // Coordinated loop reset — when the primary video hits its segment end
     // (or natural end), seek every camera to its own segmentStart in a
@@ -190,14 +323,11 @@ export const SimpleVideosPlayer = ({
       seek(0, "video");
     };
 
-    // Capture the nodes this effect actually attaches to. React can clear a
-    // callback ref during a keyed media replacement before running the effect
-    // cleanup; reading `videoRefs.current` there would then miss the old node
-    // and leave its timeupdate handler alive.
-    const attachedVideos = videoRefs.current.slice();
+    const cleanups: (() => void)[] = [];
     videoRefs.current.forEach((video, index) => {
       if (!video) return;
       const info = videosInfo[index];
+      if (!info) return;
 
       // One timeupdate handler per video covers both jobs:
       // (a) loop-reset on segmented videos at segment-end
@@ -246,44 +376,6 @@ export const SimpleVideosPlayer = ({
           }
         : null;
 
-      let countedAsReady = false;
-      const markVideoReady = () => {
-        if (cancelled || countedAsReady) return;
-        countedAsReady = true;
-        checkReady();
-      };
-
-      // A seek inside an already-loaded MP4 does not reliably emit another
-      // `loadeddata`. That made a fast shared-shard episode switch sit behind
-      // the 10-second fallback even though the requested frame was already
-      // decoded. Treat `seeked`/`canplay` as the authoritative completion
-      // signals, and count each camera only after it is at the new segment.
-      const handleSegmentReady = info.isSegmented
-        ? () => {
-            if (cancelled || countedAsReady) return;
-            const targetTime = mediaTimeFromEpisodeTime(info, 0);
-            if (
-              Math.abs(video.currentTime - targetTime) >
-              THRESHOLDS.VIDEO_SEGMENT_BOUNDARY
-            ) {
-              if (
-                video.readyState >= HTMLMediaElement.HAVE_METADATA &&
-                !video.seeking
-              ) {
-                video.currentTime = targetTime;
-              }
-              return;
-            }
-            if (
-              video.seeking ||
-              video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
-            ) {
-              return;
-            }
-            markVideoReady();
-          }
-        : null;
-
       const handleEnded = info.isSegmented
         ? null
         : () => {
@@ -300,66 +392,41 @@ export const SimpleVideosPlayer = ({
       video.addEventListener("timeupdate", handleTimeUpdate);
       if (handlePlay) video.addEventListener("play", handlePlay);
       if (handleEnded) video.addEventListener("ended", handleEnded);
-
-      // Already-loaded videos (cached or fast network) may not re-fire a
-      // readiness event after we attach the listener. Check the current state
-      // in a microtask as well; otherwise only the 10s fallback would unfreeze
-      // the UI.
-      if (info.isSegmented && handleSegmentReady) {
-        video.addEventListener("loadeddata", handleSegmentReady);
-        video.addEventListener("canplay", handleSegmentReady);
-        video.addEventListener("seeked", handleSegmentReady);
-
-        const targetTime = mediaTimeFromEpisodeTime(info, 0);
-        if (
-          video.readyState >= HTMLMediaElement.HAVE_METADATA &&
-          !video.seeking &&
-          Math.abs(video.currentTime - targetTime) >
-            THRESHOLDS.VIDEO_SEGMENT_BOUNDARY
-        ) {
-          video.currentTime = targetTime;
-        }
-        queueMicrotask(handleSegmentReady);
-      } else if (!info.isSegmented) {
-        if (video.readyState >= HTMLMediaElement.HAVE_ENOUGH_DATA) {
-          queueMicrotask(checkReady);
-        } else {
-          video.addEventListener("canplaythrough", checkReady, { once: true });
-        }
-      }
-
-      videoEventCleanup.set(video, () => {
+      cleanups.push(() => {
         video.removeEventListener("timeupdate", handleTimeUpdate);
         if (handlePlay) video.removeEventListener("play", handlePlay);
-        if (handleSegmentReady) {
-          video.removeEventListener("loadeddata", handleSegmentReady);
-          video.removeEventListener("canplay", handleSegmentReady);
-          video.removeEventListener("seeked", handleSegmentReady);
-        }
         if (handleEnded) video.removeEventListener("ended", handleEnded);
-        video.removeEventListener("canplaythrough", checkReady);
       });
+
+      // A camera restored from the hidden menu is a fresh <video> at media
+      // time 0, which for a shared v3 MP4 is another episode's footage. Move
+      // it to where the others are before the play effect starts it.
+      if (!positionedVideosRef.current.has(video)) {
+        const placeAtClock = () => {
+          positionedVideosRef.current.add(video);
+          video.currentTime = mediaTimeFromEpisodeTime(
+            info,
+            currentTimeRef.current,
+          );
+        };
+        if (video.readyState >= HTMLMediaElement.HAVE_METADATA) {
+          placeAtClock();
+        } else {
+          video.addEventListener("loadedmetadata", placeAtClock, {
+            once: true,
+          });
+          cleanups.push(() =>
+            video.removeEventListener("loadedmetadata", placeAtClock),
+          );
+        }
+      }
     });
 
     return () => {
       cancelled = true;
-      clearTimeout(timeout);
-      attachedVideos.forEach((video) => {
-        if (!video) return;
-        video.pause();
-        const cleanup = videoEventCleanup.get(video);
-        if (cleanup) {
-          cleanup();
-          videoEventCleanup.delete(video);
-        }
-      });
+      cleanups.forEach((cleanup) => cleanup());
     };
-    // firstVisibleIdx intentionally omitted — we read it via ref so hiding
-    // the first camera doesn't reset readiness (see the comment near
-    // firstVisibleIdxRef above).
-    // onVideosReady intentionally omitted — read via onVideosReadyRef so
-    // an inline parent prop doesn't tear this effect down on every render.
-  }, [loading, videosInfo, setIsPlaying, seek]);
+  }, [loading, videosInfo, hiddenVideos, seek]);
 
   // Handle play/pause — skip hidden videos
   useEffect(() => {

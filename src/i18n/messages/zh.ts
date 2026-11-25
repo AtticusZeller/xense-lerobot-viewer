@@ -748,6 +748,8 @@ export const zh: Record<MessageKey, string> = {
   "urdf.hintSeek5": "后退/快进 5 秒",
   "urdf.resizeVideo": "拖动以缩放视频窗口",
   "urdf.resetVideoSize": "双击恢复默认大小",
+  "urdf.showTactile": "显示触觉 · {count}",
+  "urdf.hideTactile": "收起触觉",
   "urdf.tacCapMapping": "夹爪映射",
   "urdf.tacCapMapped": "（已映射 {mapped}/{total} 个夹爪）",
   "urdf.tacCapSide": "夹爪",
