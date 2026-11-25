@@ -950,6 +950,7 @@ export const zh: Record<MessageKey, string> = {
     "配置环境变量 LEROBOT_CHECK_DIR 后可直接在界面执行，或复制以下命令到终端运行：",
   "calib.calibrateSucceeded": "外参标定已完成，已重新加载 head.json。",
   "calib.framesUpdated": "标定帧列表已更新，已合并保留原有标注。",
+  "calib.frameReplaced": "已跳过原帧并补抽 1 个新候选帧。",
   "calib.missingFramesTitle": "尚未生成标定候选帧（frames.json）",
   "calib.missingFramesDesc":
     "先运行 lerobot-check calib-frames 从数据集抽取标定帧，完成后点击刷新即可开始点选两指尖中点。",
@@ -963,6 +964,9 @@ export const zh: Record<MessageKey, string> = {
   "calib.nextRemaining": "下一待标 (U)",
   "calib.skipFrame": "跳过 (S)",
   "calib.unskip": "取消跳过 (S)",
+  "calib.replaceFrame": "换一帧",
+  "calib.replaceFrameTitle":
+    "跳过当前帧、保存 points.json，并为该机械臂补抽 1 个新候选帧",
   "calib.clearPoint": "清除 (Del)",
   "calib.shortcutsHint":
     "点击图像设置两指尖中点 · ←/→ 或 P/N 切换帧 · S 跳过 · U 跳到下一待标帧 · Del 清除 · Ctrl+S 保存",

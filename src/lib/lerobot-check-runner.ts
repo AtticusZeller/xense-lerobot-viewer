@@ -39,7 +39,7 @@ function runLockKey(
 }
 
 export function shellQuote(value: string): string {
-  return /^[A-Za-z0-9_./:@=-]+$/.test(value)
+  return /^[A-Za-z0-9_.,/:@=-]+$/.test(value)
     ? value
     : `'${value.replace(/'/g, "'\\''")}'`;
 }
@@ -51,12 +51,29 @@ export function resolveLerobotCheckDir(
   return raw ? raw : null;
 }
 
+const ARM_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
+
+function normalizeArmNames(arms?: readonly string[]): string[] {
+  if (!arms || arms.length === 0) return [];
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const arm of arms) {
+    if (typeof arm !== "string" || !ARM_NAME_PATTERN.test(arm)) continue;
+    if (!seen.has(arm)) {
+      seen.add(arm);
+      result.push(arm);
+    }
+  }
+  return result;
+}
+
 export function buildCalibrationCliInvocation(
   action: LerobotCheckCliAction,
   options: {
     datasetDir: string;
     repoId: string;
     append?: number;
+    arms?: readonly string[];
     count?: number;
     testPerTier?: number;
     seed?: number;
@@ -78,6 +95,10 @@ export function buildCalibrationCliInvocation(
     options.append > 0
   ) {
     subcommandArgs.push("--append", String(options.append));
+    const arms = normalizeArmNames(options.arms);
+    if (arms.length > 0) {
+      subcommandArgs.push("--arms", arms.join(","));
+    }
   }
   if (action === "suggest") {
     if (
@@ -248,6 +269,7 @@ async function runLerobotCheckCli(
     datasetDir: string;
     repoId: string;
     append?: number;
+    arms?: readonly string[];
     count?: number;
     testPerTier?: number;
     seed?: number;
@@ -376,6 +398,7 @@ export function runCalibrationCli(
     datasetDir: string;
     repoId: string;
     append?: number;
+    arms?: readonly string[];
     timeoutMs?: number;
     env?: Record<string, string | undefined>;
   },

@@ -22,6 +22,7 @@ import {
   groupCalibrationFramesByArm,
   isFrameClicked,
   isFrameSkipped,
+  pickNewlyAddedFrameId,
   rankCalibrationResiduals,
   summarizeCalibrationProgress,
 } from "@/utils/calibrationData";
@@ -331,48 +332,62 @@ export default function CalibrationPanel({
     }
   }, [effectiveFrames, selectedIndex]);
 
-  const handleSave = useCallback(async (): Promise<boolean> => {
-    if (!encodedPath || !state) return false;
-    setSaving(true);
-    setSaveFeedback(null);
-    try {
-      const updates = Object.values(draftUpdates);
-      const res = await fetch(
-        `/api/local-datasets/${encodedPath}/calibration`,
-        {
-          method: "PUT",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ updates }),
-        },
-      );
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
+  const handleSave = useCallback(
+    async (
+      extraUpdates?: readonly CalibrationPointUpdate[],
+    ): Promise<boolean> => {
+      if (!encodedPath || !state) return false;
+      setSaving(true);
+      setSaveFeedback(null);
+      try {
+        const merged = new Map<string, CalibrationPointUpdate>();
+        for (const update of Object.values(draftUpdates)) {
+          merged.set(update.id, update);
+        }
+        if (extraUpdates) {
+          for (const update of extraUpdates) {
+            merged.set(update.id, update);
+          }
+        }
+        const updates = [...merged.values()];
+        const res = await fetch(
+          `/api/local-datasets/${encodedPath}/calibration`,
+          {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ updates }),
+          },
+        );
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setSaveFeedback({
+            kind: "error",
+            text: String(
+              (body as { error?: string }).error ?? `HTTP ${res.status}`,
+            ),
+          });
+          return false;
+        }
+        const nextState = body as CalibrationStatePayload;
+        setState(nextState);
+        setDraftUpdates({});
+        setSaveFeedback({
+          kind: "ok",
+          text: t("calib.savedPoints", { count: updates.length }),
+        });
+        return true;
+      } catch (err) {
         setSaveFeedback({
           kind: "error",
-          text: String(
-            (body as { error?: string }).error ?? `HTTP ${res.status}`,
-          ),
+          text: err instanceof Error ? err.message : String(err),
         });
         return false;
+      } finally {
+        setSaving(false);
       }
-      const nextState = body as CalibrationStatePayload;
-      setState(nextState);
-      setDraftUpdates({});
-      setSaveFeedback({
-        kind: "ok",
-        text: t("calib.savedPoints", { count: updates.length }),
-      });
-      return true;
-    } catch (err) {
-      setSaveFeedback({
-        kind: "error",
-        text: err instanceof Error ? err.message : String(err),
-      });
-      return false;
-    } finally {
-      setSaving(false);
-    }
-  }, [draftUpdates, encodedPath, state, t]);
+    },
+    [draftUpdates, encodedPath, state, t],
+  );
 
   const handleCopy = async (key: string, text: string) => {
     const ok = await copyTextToClipboard(text);
@@ -464,6 +479,94 @@ export default function CalibrationPanel({
         kind: "error",
         title: err instanceof Error ? err.message : String(err),
         command: copyCommand,
+      });
+    } finally {
+      setRunningAction(null);
+    }
+  };
+
+  const handleReplaceFrame = async () => {
+    if (!encodedPath || !state || !selectedFrame || runningAction !== null) {
+      return;
+    }
+
+    const targetArm = selectedFrame.arm;
+    const replaceCommand = `${state.cli.commands.initFrames} --append 1 --arms ${targetArm}`;
+
+    if (!state.cli.configured) {
+      setCliBanner({
+        kind: "info",
+        title: t("calib.cliUnconfiguredTitle"),
+        command: replaceCommand,
+      });
+      return;
+    }
+
+    const oldFrameIds = state.frames.map((frame) => frame.id);
+    const skipUpdate: CalibrationPointUpdate = {
+      id: selectedFrame.id,
+      pixel: null,
+      skipped: true,
+    };
+
+    setRunningAction("replace-frame");
+    setCliBanner(null);
+    setFrameDraft(selectedFrame.id, skipUpdate);
+
+    try {
+      const savedOk = await handleSave([skipUpdate]);
+      if (!savedOk) return;
+
+      const res = await fetch(
+        `/api/local-datasets/${encodedPath}/calibration/run`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            action: "calib-frames",
+            append: 1,
+            arms: [targetArm],
+          }),
+        },
+      );
+      const body = (await res.json().catch(() => ({}))) as Partial<
+        CalibrationRunResult & { error?: string }
+      >;
+
+      if (body.state) {
+        setState(body.state);
+      }
+
+      if (!res.ok || !body.ok) {
+        setCliBanner({
+          kind: body.configured === false ? "info" : "error",
+          title: body.error ?? `HTTP ${res.status}`,
+          command: body.command ?? replaceCommand,
+          output: [body.stdout, body.stderr].filter(Boolean).join("\n").trim(),
+        });
+        return;
+      }
+
+      if (body.state) {
+        const nextId = pickNewlyAddedFrameId(
+          oldFrameIds,
+          body.state.frames,
+          selectedFrame.id,
+        );
+        setSelectedId(nextId);
+      }
+
+      setCliBanner({
+        kind: "ok",
+        title: t("calib.frameReplaced"),
+        command: body.command ?? replaceCommand,
+        output: [body.stdout, body.stderr].filter(Boolean).join("\n").trim(),
+      });
+    } catch (err) {
+      setCliBanner({
+        kind: "error",
+        title: err instanceof Error ? err.message : String(err),
+        command: replaceCommand,
       });
     } finally {
       setRunningAction(null);
@@ -918,6 +1021,17 @@ export default function CalibrationPanel({
                               ? t("calib.unskip")
                               : t("calib.skipFrame")}
                           </button>
+                          <button
+                            type="button"
+                            disabled={runningAction !== null}
+                            title={t("calib.replaceFrameTitle")}
+                            onClick={() => void handleReplaceFrame()}
+                            className="rounded border border-cyan-400/35 bg-cyan-500/10 px-2.5 py-1 text-cyan-200 transition-colors hover:bg-cyan-500/20 disabled:opacity-50"
+                          >
+                            {runningAction === "replace-frame"
+                              ? t("calib.running")
+                              : t("calib.replaceFrame")}
+                          </button>
                           {(isFrameClicked(selectedFrame) ||
                             isFrameSkipped(selectedFrame)) && (
                             <button
@@ -938,6 +1052,11 @@ export default function CalibrationPanel({
                             ep {selectedFrame.episode_index} · frame{" "}
                             {selectedFrame.frame_index}
                           </span>
+                          {typeof selectedFrame.speed_mps === "number" && (
+                            <span>
+                              {selectedFrame.speed_mps.toFixed(3)} m/s
+                            </span>
+                          )}
                           <span>
                             tcp ({selectedFrame.tcp[0].toFixed(3)},{" "}
                             {selectedFrame.tcp[1].toFixed(3)},{" "}

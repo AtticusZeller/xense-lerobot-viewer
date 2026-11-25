@@ -25,6 +25,7 @@ export interface CalibrationFrameEntry {
   episode_index: number;
   frame_index: number;
   tcp: CalibrationTcpPose;
+  speed_mps?: number;
   [key: string]: unknown;
 }
 

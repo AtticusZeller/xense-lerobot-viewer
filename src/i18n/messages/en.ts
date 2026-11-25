@@ -986,6 +986,7 @@ export const en = {
   "calib.calibrateSucceeded": "Calibration finished and head.json reloaded.",
   "calib.framesUpdated":
     "Calibration frames updated and merged with existing points.",
+  "calib.frameReplaced": "Skipped frame and sampled 1 replacement candidate.",
   "calib.missingFramesTitle": "No calibration frames found (frames.json)",
   "calib.missingFramesDesc":
     "Run lerobot-check calib-frames to sample candidate head camera frames, then refresh to start clicking fingertip midpoints.",
@@ -1000,6 +1001,9 @@ export const en = {
   "calib.nextRemaining": "Next remaining (U)",
   "calib.skipFrame": "Skip (S)",
   "calib.unskip": "Unskip (S)",
+  "calib.replaceFrame": "Replace frame",
+  "calib.replaceFrameTitle":
+    "Skip this frame, save points.json, and sample 1 replacement frame for this arm",
   "calib.clearPoint": "Clear (Del)",
   "calib.shortcutsHint":
     "Click image to set fingertip midpoint · ←/→ or P/N prev/next · S skip · U next remaining · Del clear · Ctrl+S save",

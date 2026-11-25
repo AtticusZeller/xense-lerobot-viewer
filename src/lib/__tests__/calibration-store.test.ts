@@ -307,6 +307,55 @@ describe("calibration-store", () => {
     });
     expect(unconfigured.configured).toBe(false);
     expect(unconfigured.displayCommand).toContain("lerobot-check calibrate");
+
+    const replaceOne = buildCalibrationCliInvocation("calib-frames", {
+      datasetDir: "/data/Xense/demo",
+      repoId: "Xense/demo",
+      append: 1,
+      arms: ["left"],
+      env: { LEROBOT_CHECK_DIR: "/opt/lerobot-check" },
+    });
+    expect(replaceOne.args).toEqual([
+      "run",
+      "--project",
+      "/opt/lerobot-check",
+      "lerobot-check",
+      "calib-frames",
+      "--dataset-root",
+      "/data/Xense/demo",
+      "--repo-id",
+      "Xense/demo",
+      "--append",
+      "1",
+      "--arms",
+      "left",
+    ]);
+    expect(replaceOne.displayCommand).toContain("--append 1 --arms left");
+
+    const dedupedMulti = buildCalibrationCliInvocation("calib-frames", {
+      datasetDir: "/data/Xense/demo",
+      repoId: "Xense/demo",
+      append: 2,
+      arms: ["left", "right", "left"],
+      env: {},
+    });
+    expect(dedupedMulti.args.slice(-4)).toEqual([
+      "--append",
+      "2",
+      "--arms",
+      "left,right",
+    ]);
+    expect(dedupedMulti.displayCommand).toContain(
+      "--append 2 --arms left,right",
+    );
+
+    const armsWithoutAppend = buildCalibrationCliInvocation("calib-frames", {
+      datasetDir: "/data/Xense/demo",
+      repoId: "Xense/demo",
+      arms: ["left"],
+      env: {},
+    });
+    expect(armsWithoutAppend.args).not.toContain("--arms");
   });
 
   it("reads episode TCP from a v3 data file that does not start at global index 0", async () => {

@@ -129,6 +129,16 @@ function parseFrameEntry(
     tcp,
   };
 
+  if (
+    typeof raw.speed_mps === "number" &&
+    Number.isFinite(raw.speed_mps) &&
+    raw.speed_mps >= 0
+  ) {
+    entry.speed_mps = raw.speed_mps;
+  } else {
+    delete entry.speed_mps;
+  }
+
   if (allowAnnotations) {
     if (raw.pixel !== undefined) {
       entry.pixel = parsePixel(raw.pixel, `frames[${index}].pixel`);
@@ -691,6 +701,23 @@ export function frameEntryToBase(
   delete copy.pixel;
   delete copy.skipped;
   return copy;
+}
+
+export function pickNewlyAddedFrameId(
+  previousFrameIds: readonly string[],
+  nextFrames: readonly Pick<CalibrationFrameEntry, "id">[],
+  currentSelectedId: string | null,
+): string | null {
+  const existing = new Set(previousFrameIds);
+  const added = nextFrames.find((frame) => !existing.has(frame.id));
+  if (added) return added.id;
+  if (
+    currentSelectedId &&
+    nextFrames.some((frame) => frame.id === currentSelectedId)
+  ) {
+    return currentSelectedId;
+  }
+  return nextFrames[0]?.id ?? null;
 }
 
 export const MIN_RESIDUAL_REVIEW_PX = 15;

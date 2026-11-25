@@ -10,6 +10,7 @@ import {
   parseCalibrationHeadJson,
   parseCalibrationIntrinsicsJson,
   parseCalibrationPointsJson,
+  pickNewlyAddedFrameId,
   serializeCalibrationPoints,
   summarizeCalibrationProgress,
 } from "../calibrationData";
@@ -348,5 +349,102 @@ describe("calibrationData", () => {
         JSON.stringify({ version: 1, image_size: [640, 480], fx: "bad" }),
       ),
     ).toThrow(/expected finite number/);
+  });
+
+  it("preserves optional non-negative finite speed_mps and ignores absent or invalid values", () => {
+    const parsed = parseCalibrationFramesJson(
+      JSON.stringify({
+        version: 1,
+        repo_id: "Xense/pack_iphone_box_1119",
+        revision: "3a8b398b",
+        camera: "observation.images.head",
+        image_size: [640, 480],
+        frames: [
+          {
+            id: "left-000",
+            arm: "left",
+            episode_index: 0,
+            frame_index: 10,
+            tcp: [...SAMPLE_TCP],
+            speed_mps: 0.0124,
+          },
+          {
+            id: "left-001",
+            arm: "left",
+            episode_index: 0,
+            frame_index: 20,
+            tcp: [...SAMPLE_TCP],
+            speed_mps: 0,
+          },
+          {
+            id: "left-002",
+            arm: "left",
+            episode_index: 0,
+            frame_index: 30,
+            tcp: [...SAMPLE_TCP],
+          },
+          {
+            id: "left-003",
+            arm: "left",
+            episode_index: 0,
+            frame_index: 40,
+            tcp: [...SAMPLE_TCP],
+            speed_mps: -0.01,
+          },
+          {
+            id: "left-004",
+            arm: "left",
+            episode_index: 0,
+            frame_index: 50,
+            tcp: [...SAMPLE_TCP],
+            speed_mps: "fast",
+          },
+        ],
+      }),
+    );
+
+    expect(parsed.frames[0].speed_mps).toBe(0.0124);
+    expect(parsed.frames[1].speed_mps).toBe(0);
+    expect(parsed.frames[2].speed_mps).toBeUndefined();
+    expect(parsed.frames[3].speed_mps).toBeUndefined();
+    expect(parsed.frames[4].speed_mps).toBeUndefined();
+  });
+
+  it("pickNewlyAddedFrameId selects the newly appended frame or keeps current selection", () => {
+    const oldIds = ["left-000", "left-001", "right-000"];
+
+    expect(
+      pickNewlyAddedFrameId(
+        oldIds,
+        [
+          { id: "left-000" },
+          { id: "left-001" },
+          { id: "right-000" },
+          { id: "left-002" },
+        ],
+        "left-001",
+      ),
+    ).toBe("left-002");
+
+    // No new frame added -> keep current selection
+    expect(
+      pickNewlyAddedFrameId(
+        oldIds,
+        [{ id: "left-000" }, { id: "left-001" }, { id: "right-000" }],
+        "left-001",
+      ),
+    ).toBe("left-001");
+
+    // Current selection missing and no new frame -> fall back to first frame
+    expect(
+      pickNewlyAddedFrameId(
+        oldIds,
+        [{ id: "left-000" }, { id: "right-000" }],
+        "left-001",
+      ),
+    ).toBe("left-000");
+
+    // Empty next frames -> null
+    expect(pickNewlyAddedFrameId(oldIds, [], "left-001")).toBeNull();
   });
 });

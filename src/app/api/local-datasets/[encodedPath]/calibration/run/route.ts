@@ -27,6 +27,8 @@ async function resolveExistingDatasetDir(
   }
 }
 
+const ARM_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
+
 export async function POST(
   request: NextRequest,
   ctx: { params: Promise<{ encodedPath: string }> },
@@ -37,9 +39,13 @@ export async function POST(
     return Response.json({ error: "Dataset not found" }, { status: 404 });
   }
 
-  let body: { action?: unknown; append?: unknown };
+  let body: { action?: unknown; append?: unknown; arms?: unknown };
   try {
-    body = (await request.json()) as { action?: unknown; append?: unknown };
+    body = (await request.json()) as {
+      action?: unknown;
+      append?: unknown;
+      arms?: unknown;
+    };
   } catch {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
@@ -68,6 +74,40 @@ export async function POST(
     append = body.append;
   }
 
+  let arms: string[] | undefined;
+  if (body.arms !== undefined && body.arms !== null) {
+    if (action !== "calib-frames" || append === undefined) {
+      return Response.json(
+        { error: "arms is only allowed together with calib-frames and append" },
+        { status: 400 },
+      );
+    }
+    if (!Array.isArray(body.arms) || body.arms.length === 0) {
+      return Response.json(
+        { error: "arms must be a non-empty array of arm names" },
+        { status: 400 },
+      );
+    }
+    const deduped: string[] = [];
+    const seen = new Set<string>();
+    for (const item of body.arms) {
+      if (typeof item !== "string" || !ARM_NAME_PATTERN.test(item)) {
+        return Response.json(
+          {
+            error:
+              "each arm name must be a non-empty string matching /^[A-Za-z0-9_-]+$/",
+          },
+          { status: 400 },
+        );
+      }
+      if (!seen.has(item)) {
+        seen.add(item);
+        deduped.push(item);
+      }
+    }
+    arms = deduped;
+  }
+
   if (getActiveCalibrationRun(datasetDir)) {
     return Response.json(
       {
@@ -83,6 +123,7 @@ export async function POST(
       datasetDir,
       repoId: paths.repoId,
       append,
+      arms,
     });
     const state = await loadCalibrationState(datasetDir);
 
