@@ -5,6 +5,9 @@ import path from "node:path";
 import {
   buildV2EpisodeDataPath,
   listV3EpisodeMetadataFiles,
+  locateEpisodeRows,
+  openParquet,
+  readParquetRowsRaw,
 } from "../parquet-server";
 
 const V2_INFO = {
@@ -90,5 +93,32 @@ describe("listV3EpisodeMetadataFiles", () => {
 
   it("returns an empty list when the metadata tree is missing", async () => {
     expect(await listV3EpisodeMetadataFiles(os.tmpdir())).toEqual([]);
+  });
+});
+
+describe("locateEpisodeRows (v3, several data files)", () => {
+  it("returns a file-local rowOffset that lands on the episode's first row", async () => {
+    const root = path.join(import.meta.dir, "fixtures", "v3-two-data-files");
+    const locator = await locateEpisodeRows(root, 1);
+    expect(locator).toMatchObject({
+      relPath: "data/chunk-000/file-001.parquet",
+      fromIndex: 3,
+      toIndex: 6,
+      rowOffset: 0,
+    });
+    const abs = path.join(root, locator!.relPath);
+    const stat = await fs.stat(abs);
+    const handle = await openParquet(
+      abs,
+      locator!.relPath,
+      stat.size,
+      stat.mtimeMs,
+    );
+    const [row] = await readParquetRowsRaw(handle, locator!.rowOffset, 1, [
+      "episode_index",
+      "frame_index",
+    ]);
+    expect(Number(row.episode_index)).toBe(1);
+    expect(Number(row.frame_index)).toBe(0);
   });
 });

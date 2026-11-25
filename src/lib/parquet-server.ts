@@ -418,6 +418,7 @@ async function locateEpisodeRowsV2(
     relPath,
     fromIndex: 0,
     toIndex: handle.info.numRows,
+    rowOffset: 0,
   };
 }
 
@@ -477,16 +478,41 @@ export async function locateEpisodeRows(
 
     for (const row of rows) {
       if (bigIntToNumber(row["episode_index"], -1) !== episodeIndex) continue;
+      const relPath = buildDataPathFromRow(row);
+      const fromIndex = bigIntToNumber(row["dataset_from_index"], 0);
       return {
         episodeIndex,
-        relPath: buildDataPathFromRow(row),
-        fromIndex: bigIntToNumber(row["dataset_from_index"], 0),
+        relPath,
+        fromIndex,
         toIndex: bigIntToNumber(row["dataset_to_index"], 0),
+        rowOffset: Math.max(
+          0,
+          fromIndex - (await readDataFileStartIndex(datasetRoot, relPath)),
+        ),
       };
     }
   }
 
   return null;
+}
+
+/** First `index` value of a v3 data file, i.e. its dataset-global row offset. */
+async function readDataFileStartIndex(
+  datasetRoot: string,
+  relPath: string,
+): Promise<number> {
+  const absolutePath = resolveInsideDataset(datasetRoot, relPath);
+  if (!absolutePath) return 0;
+  const stat = await statFileOrNull(absolutePath);
+  if (!stat) return 0;
+  const handle = await openParquet(
+    absolutePath,
+    relPath,
+    stat.size,
+    stat.mtimeMs,
+  );
+  const [first] = await readParquetRowsRaw(handle, 0, 1, ["index"]);
+  return bigIntToNumber(first?.["index"], 0);
 }
 
 function buildDataPathFromRow(row: Record<string, unknown>): string {

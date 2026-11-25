@@ -127,7 +127,7 @@ export default function ParquetTablePanel({
         setDatasetPath(res.datasetPath);
         setLocator(res.episodeLocator);
         if (res.episodeLocator) {
-          pendingOffsetRef.current = res.episodeLocator.fromIndex;
+          pendingOffsetRef.current = res.episodeLocator.rowOffset;
         }
         setSelected(
           (prev) =>
@@ -268,9 +268,9 @@ export default function ParquetTablePanel({
   const jumpToEpisode = useCallback(() => {
     if (!locator) return;
     if (selected === locator.relPath) {
-      setOffset(locator.fromIndex);
+      setOffset(locator.rowOffset);
     } else {
-      pendingOffsetRef.current = locator.fromIndex;
+      pendingOffsetRef.current = locator.rowOffset;
       setSelected(locator.relPath);
     }
   }, [locator, selected]);

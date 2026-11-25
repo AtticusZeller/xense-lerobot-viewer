@@ -79,6 +79,9 @@ export default function CalibrationPanel({
     output?: string;
   } | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  // Skipped frames stay in frames.json (they keep replacements away from the
+  // bad pose) but are clutter in the list, so they are hidden by default.
+  const [showSkipped, setShowSkipped] = useState(false);
 
   // Per-episode head video metadata cache for fast switching between frames.
   const episodeMediaCacheRef = useRef<
@@ -1139,6 +1142,17 @@ export default function CalibrationPanel({
                       })}
                     </span>
                   </div>
+                  {progress.skipped > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowSkipped((v) => !v)}
+                      className="self-start text-[11px] text-slate-400 hover:text-cyan-200"
+                    >
+                      {showSkipped
+                        ? t("calib.hideSkipped")
+                        : t("calib.showSkipped", { n: progress.skipped })}
+                    </button>
+                  )}
 
                   <div className="max-h-[46vh] space-y-3 overflow-y-auto pr-1">
                     {armGroups.map((group) => {
@@ -1179,6 +1193,9 @@ export default function CalibrationPanel({
                               const active = frame.id === selectedId;
                               const clicked = isFrameClicked(frame);
                               const skipped = isFrameSkipped(frame);
+                              if (skipped && !showSkipped && !active) {
+                                return null;
+                              }
                               const dirty = Boolean(draftUpdates[frame.id]);
                               const needsReview = reviewFrameIds.has(frame.id);
                               return (

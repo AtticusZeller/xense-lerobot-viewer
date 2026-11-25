@@ -977,6 +977,8 @@ export const zh: Record<MessageKey, string> = {
   "calib.videoLoadError": "头部相机视频加载失败。",
   "calib.statusSkipped": "已跳过",
   "calib.statusSkippedShort": "跳过",
+  "calib.showSkipped": "显示已跳过（{n}）",
+  "calib.hideSkipped": "隐藏已跳过",
   "calib.resultsTitle": "标定结果（head.json）",
   "calib.openOverlay": "进入叠加验证",
   "calib.residualsTitle": "各点残差（点击跳至该帧对比重投影）",

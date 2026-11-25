@@ -1014,6 +1014,8 @@ export const en = {
   "calib.videoLoadError": "Failed to load head camera video.",
   "calib.statusSkipped": "Skipped",
   "calib.statusSkippedShort": "skip",
+  "calib.showSkipped": "Show skipped ({n})",
+  "calib.hideSkipped": "Hide skipped",
   "calib.resultsTitle": "Calibration results (head.json)",
   "calib.openOverlay": "Verify overlay",
   "calib.residualsTitle": "Per-point residuals (click to inspect reprojection)",

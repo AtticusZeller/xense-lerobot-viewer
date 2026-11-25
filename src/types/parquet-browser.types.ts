@@ -53,8 +53,11 @@ export interface ParquetReadResponse {
 export interface EpisodeLocator {
   episodeIndex: number;
   relPath: string;
+  /** Dataset-global row index range (`dataset_from_index` / `dataset_to_index`). */
   fromIndex: number;
   toIndex: number;
+  /** Row offset of the episode's first row inside `relPath`; v3 files hold a slice of the dataset. */
+  rowOffset: number;
 }
 
 export interface ParquetFilesResponse {
