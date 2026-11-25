@@ -50,7 +50,7 @@ Each LeRobot dataset under `LOCAL_DATASET_ROOT` (default `${HOME}/.cache/hugging
 
 `sizeBytes` comes from `directorySizeBytes()`, a recursive walk of the dataset directory. It counts **everything on disk**, including the `.cache/huggingface` bookkeeping a Hub sync leaves behind — the figure answers "what does this cost me on disk", and `IGNORE_DIRS` only governs where datasets are _found_. Symlinks are skipped rather than followed, so a linked-in `videos/` is attributed to whoever owns the bytes instead of being double-counted. Apparent size is summed, not allocated blocks, so it reads slightly under `du` (which also charges for directory inodes). The walk is cheap enough to run inline on every homepage render **on the default root** — ~8 ms for 20 datasets / 4k files on an SSD.
 
-It is not cheap on a big archive over slow storage, and that is the one thing it is cached for. Measured on the dev box's exFAT USB drive: `/media/.../TacVerse-opendata` is 162 datasets / 52k files and the size walk is **9.2 s of a 9.6 s scan — 96% of it**, everything else (info.json, tags, integrity, facets) being 0.4 s; `/media/.../TacVerse` is 612 datasets / 175k files and takes **46 s with a warm dentry cache**, minutes cold. That is a homepage render, which is why the path switcher looked like it simply did not work. So `src/lib/dataset-size-cache.ts` remembers each walk in one file under the **default root** (the root anchors the stores whichever path is browsed, so entries from every location coexist and switching back and forth does not evict), keyed on the absolute dataset directory plus `datasetSizeFingerprint` — the mtimes of the dataset directory, `meta/`, `data/`, `videos/` and **the immediate children of the latter two**. Those children are the point: directory mtime only moves when a _direct_ child changes, so the dataset directory alone cannot see `export_subtasks.py` writing a `.bak` inside `data/chunk-000/`. It is a heuristic and it can still miss a file rewritten in place with no directory change; what that costs is a stale number in a storage column, so the trade is deliberate, and deleting the file forces a full recount. A miss costs exactly what it cost before, every store failure is swallowed, and `flush()` writes only when the scan learned something — a read-only root loses the speed-up and nothing else.
+It is not cheap on a big archive over slow storage, and that is the one thing it is cached for. Measured on the dev box's exFAT USB drive: `/media/.../TacVerse-opendata` is 162 datasets / 52k files and the size walk is **9.2 s of a 9.6 s scan — 96% of it**, everything else (info.json, tags, integrity, facets) being 0.4 s; `/media/.../TacVerse` is 612 datasets / 175k files and takes **46 s with a warm dentry cache**, minutes cold. That is a homepage render, which is why the path switcher looked like it simply did not work. So `src/lib/dataset-size-cache.ts` remembers each walk in one file under the **default root** (the root anchors the stores whichever path is browsed, so entries from every location coexist and switching back and forth does not evict), keyed on the absolute dataset directory plus `datasetSizeFingerprint` — the mtimes of the dataset directory, `meta/`, `data/`, `videos/` and **the immediate children of the latter two**. Those children are the point: directory mtime only moves when a _direct_ child changes, so the dataset directory alone cannot see a tool writing a `.bak` inside `data/chunk-000/`. It is a heuristic and it can still miss a file rewritten in place with no directory change; what that costs is a stale number in a storage column, so the trade is deliberate, and deleting the file forces a full recount. A miss costs exactly what it cost before, every store failure is swallowed, and `flush()` writes only when the scan learned something — a read-only root loses the speed-up and nothing else.
 
 ### Robot types and dataset shapes
 
@@ -176,9 +176,8 @@ The browser URL for episodes is `/_local/<base64url-encoded-relative-path>/episo
 - `src/app/api/local-datasets/route.ts` — `GET` returns the discovery JSON (datasets + integrity)
 - `src/app/api/local-datasets/[encodedPath]/[...filePath]/route.ts` — streams individual files with HTTP range support for video
 - `src/app/api/local-datasets/[encodedPath]/tags/route.ts` — `GET`/`PUT` the `meta/xense_tags.json` sidecar
-- `src/app/api/local-datasets/[encodedPath]/annotations/route.ts` — `GET`/`PUT` the `meta/lerobot_annotations.json` sidecar (`GET ?episode=N` returns one episode's atoms; `PUT` merges one episode and atomically rewrites the file)
-- `src/app/api/local-datasets/[encodedPath]/subtasks/route.ts` — `GET`/`PUT` the Pi-style `meta/annotations.json` subtask sidecar (JSONL, one record/episode; `GET ?episode=N` returns one; `PUT` merge-writes one episode, preserving other episodes + `key_frames`)
-- `src/app/api/local-datasets/[encodedPath]/subtasks/export/route.ts` — `POST` spawns `scripts/export_subtasks.py` to compile the sidecar into lerobot-native `subtask_index` + `meta/subtasks.parquet`
+- `src/app/api/local-datasets/[encodedPath]/subtasks/route.ts` — `GET`/`PUT` one episode's rows of the lerobot-check subtask CSV (see **lerobot-check panels** below)
+- `src/app/api/local-datasets/[encodedPath]/{distribution,calibration,collection}/…` — read the lerobot-check JSON files and run its CLI (see **lerobot-check panels** below)
 - `src/app/api/local-datasets/[encodedPath]/parquet/route.ts` — `GET` lists every `.parquet` in the dataset (stat only); `?episode=N` also resolves that episode's data file + row range
 - `src/app/api/local-datasets/[encodedPath]/parquet/read/route.ts` — `GET` reads one parquet server-side: `?meta=1` for schema only, otherwise `?offset=&limit=&col=…` for a page of rows
 - `src/app/api/local-datasets/[encodedPath]/doctor/route.ts` — `POST` runs the read-only native TypeScript Doctor; no Python subprocess or external service
@@ -229,7 +228,6 @@ Episode entry pages call `probeDatasetHealth()` in `src/app/_local/[encodedPath]
 - Episode metadata can span **multiple chunks** (when episode count exceeds `chunks_size`). Always walk via the `iterateEpisodeMetadataFilesV3(repoId, version)` async generator in `fetch-data.ts` — it advances chunk-000 → chunk-001 → … Never hardcode `chunk-000`. The walk normally stops on a **count**: one metadata row is one episode, so it ends as soon as it has read `info.total_episodes` rows. The old terminator — request the next shard, take the 404 as the end — is still there underneath and still correct, but it fires only when `info.json` under-reports, so an ordinary dataset no longer logs two 404s per walk. The stop is safe because the episode list itself is `Array.from({length: info.total_episodes})`: an episode past that count is one the UI can never ask for.
 - Multi-task episodes: episode-metadata rows carry a `tasks` field (`list[str]`) — prefer it over the legacy single `task_index` lookup. `EpisodeMetadataV3.tasks?: string[]` exposes it.
 - `meta/tasks.parquet` lookup: rows are **not** ordered by `task_index`, and the task string lives in a named pandas index (`__index_level_0__`). Always filter by the `task_index` **column** (`row.task_index === taskIndexNum`), never by row position.
-- **Language columns (v3.1)**: `loadEpisodeDataV3` always requests `language_persistent` / `language_events` in `v3DataColumns`. `hyparquet` silently ignores columns a dataset doesn't have, so this is safe for plain v3.0 datasets — `extractLanguageAtoms()` just returns `[]`. These columns are decoded as `list<struct<role,content,style,timestamp,camera,tool_calls>>`. See the Annotations section below.
 
 ### v2.x path construction
 
@@ -245,49 +243,40 @@ formatStringWithVars(info.data_path, {
 
 `formatStringWithVars` strips `:03d` format specifiers — padding must be done by the caller.
 
-### Annotations (v3.1 language schema)
+### Annotations tab
 
-The **Annotations** tab edits lerobot's v3.1 language atoms (schema: [lerobot#3467](https://github.com/huggingface/lerobot/pull/3467)). This is a **local-only port** of upstream `lerobot-dataset-visualizer#108` — the upstream FastAPI backend and push-to-Hub/parquet-export path were **dropped**. Edits persist to a JSON sidecar only.
+The tab holds two things side by side: a read-only view of TacFlow's automatic annotation
+(`auto-annotation-panel.tsx`, data from `src/lib/auto-annotations.ts`; corrections go back through TacFlow) and the
+**Subtask** panel below. The v3.1 language-atom editor, the Pi-style `meta/annotations.json` subtask editor and
+`scripts/export_subtasks.py` were removed upstream in `f4f290d`; do not reintroduce references to them.
 
-- **Schema** (`src/types/language.types.ts`): a `LanguageAtom` is `{ role, content, style, timestamp, camera, tool_calls }`. Styles partition into **persistent** (`task_aug`/`subtask`/`plan`/`memory` → `language_persistent`, broadcast across all frames) vs **event** (`interjection`/`vqa` + speech where `style === null` → `language_events`, fired at one frame). `partitionAtoms()` / `columnForStyle()` route by style. VQA answers are JSON-stringified into `content` (`VqaBboxAnswer` / `VqaKeypointAnswer` / count / attribute / spatial). All helpers (`snapToFrame`, `activeAt`, `partitionAtoms`) are pure.
-- **Read path**: `extractLanguageAtoms()` in `fetch-data.ts` coerces the parquet `language_persistent`/`language_events` lists into `LanguageAtom[]` (persistent deduped from the first non-empty row; events collected per-row with the row `timestamp` as fallback). Exposed on `EpisodeData.languageAtoms` + `EpisodeData.frameTimestamps` (sorted, from the **full non-sampled** row set, used for snap-to-frame).
-- **State** (`src/context/annotations-context.tsx`): `AnnotationsProvider` holds per-episode atoms + draw state. `EpisodeBootstrap` (in `episode-viewer.tsx`) calls `setEpisode(episodeId, { repoId }, languageAtoms, frameTimestamps)`. **Hydration precedence: unsaved sessionStorage edits → JSON sidecar (`fetchEpisodeAtoms`) → parquet atoms.** sessionStorage is the live edit buffer; `save()` writes the sidecar.
-- **Persistence** (`src/utils/annotationsClient.ts`): rewritten to be local — derives the route from `getLocalDatasetFileBase(repoId)` and `PUT`s to `…/[encodedPath]/annotations`. `isAnnotateBackendEnabled()` always returns `true` (local write is always available); `fetchFrameTimestamps` is a no-op stub (timestamps come from the parquet). **There is no `NEXT_PUBLIC_ANNOTATE_BACKEND_URL` and no `backend/` directory** — do not reintroduce them.
-- **Sidecar** `meta/lerobot_annotations.json`: `{ version: 2, episodes: { "<id>": { atoms: [...] } }, updated_at }`. The route does read-modify-write of the whole file (preserving other episodes) with an atomic `tmp`+`rename`, mirroring the tags route.
-- **UI**: `annotations-panel.tsx` (quick-add + inspector; the upstream "Save dataset"/export and "backend offline" UI were removed), `annotations-timeline.tsx` (multi-track timeline), `video-overlay-canvas.tsx` (draw bbox/keypoint on a video → VQA atom). The overlay mounts **only** where annotating happens: `SimpleVideosPlayer` takes an `annotationOverlay` prop, off by default, and only the Annotations tab passes it. It used to ride along on the Episodes tab, inert — all annotation UI now lives on the Annotations tab and nowhere else.
-- **Not implemented (deferred Milestone B)**: writing atoms back into `data/chunk-*/file-*.parquet`. `hyparquet` is read-only; a local parquet write would need `hyparquet-writer` in a Node route. The JSON sidecar is the source of truth.
+### lerobot-check panels (Subtask, Distribution, Calibration, Collection)
 
-### Annotations tab layout (two panes, one screen)
+These panels are the human side of `methods/lerobot-check` (sibling submodule in the parent research repo). The
+contract is files under `<LOCAL_DATASET_ROOT>/.xense-viewer/`, shared with the CLI — `subtasks/<org>__<name>@<rev>.csv`
 
-All annotation UI lives on this tab — nothing annotation-related renders on the
-Episodes tab any more. The tab is a **CSS grid**, not nested flex columns, and
-the reason is `position: sticky`.
+- `<org>__<name>.task_spec.yaml`, `calib/*.json`, `targets/*.json`, `distribution/*.json`, `suggestions/*.json`.
+  lerobot-check's `docs/distribution.md` is the authoritative schema; the viewer never invents fields.
 
-- DOM order is `[video] [hints + playback + timeline] [editor pane]`. At `lg`
-  the grid puts the first two in column 1 (video in an `auto` row, the rest in a
-  scrolling `minmax(0,1fr)` row) and the editor in column 2 spanning both rows,
-  so both panes scroll independently and the footage never leaves the screen.
-- Below `lg` it collapses to one column in that same DOM order, and the video
-  sticks to the top. **The video must be a direct child of the scroller for
-  that to work**: sticky is confined to its own parent's box, so a video nested
-  inside a left-hand column unsticks the moment that column scrolls past — which
-  is precisely when the editor below it comes into view. Nesting it "tidily"
-  reintroduces the bug this layout was built to fix.
-- The video wrapper is capped at `lg:max-h-[55vh]` with its own overflow: a
-  dataset with several cameras wraps into rows and would otherwise take the
-  whole column height and leave no room for the timeline.
-- The editor pane carries **sub-tabs** (`annotationEditor` state) switching
-  between `AnnotationsPanel` (v3.1 language atoms) and `SubtaskPanel` (Pi-style
-  segments). One at a time, deliberately: stacking them puts the lower one back
-  off screen, which is the problem again.
-
-### Subtasks (Pi-style segmentation → lerobot-native `subtask_index`)
-
-Separate from the atom-based language editor, but sharing the Annotations tab with it: the **Subtask panel** (`src/components/subtask-panel.tsx`) is the second of the tab's two editor sub-tabs. Type an instruction at the current frame and it starts a **contiguous frame-range segment that persists until the next subtask** — the "persist until next" model lerobot's `subtask_index` uses. This is the layer that produces the **trainable** `sample["subtask"]` (the language-atom `subtask` style does not).
-
-- **Model** (`src/types/subtask.types.ts`): `SubtaskSegment { segment_id, skill, instruction, paraphrases[], start_frame_index, success_frame_index, end_frame_index }` inside `EpisodeSubtaskAnnotation { episode_index, high_level_instruction, instruction_segments[], key_frames? }`. Pure, unit-tested helpers (`activeSegmentAt`, `insertSubtaskAt`, `updateSegment`, `removeSegment`, `normalizeSegments`, `timeToFrame`/`frameToTime`) work in **frame-index** space and keep segments sorted, contiguous, and renumbered.
-- **Authoring source of truth** — `meta/annotations.json` (**JSONL**, one Pi-style record per episode; the vendor format some datasets already ship). Read/written via `src/utils/subtasksClient.ts` → the `subtasks` route, which does per-episode merge (never clobbers other episodes / `key_frames`). Panel state uses a sessionStorage live buffer + explicit **Save**, mirroring the Annotations context. Not wired to `AnnotationsProvider` (the Pi model carries skill/paraphrases/success-frame the atom schema can't express).
-- **Compile to native** — `scripts/export_subtasks.py` (pandas/pyarrow; `scripts/requirements.txt`). Writes per-frame `subtask_index` into every `data/**/*.parquet` (the earliest subtask is pinned to frame 0 so annotated episodes are fully covered; an episode with no annotation falls back to its own `task` string as one whole-episode subtask), `meta/subtasks.parquet` (mirrors `tasks.parquet`: string as `__index_level_0__` index + `subtask_index` column; indices stable across runs), and adds the `subtask_index` feature + `total_subtasks` to `meta/info.json`. Uses pyarrow (not the JS writer) so the `list<float>` `action`/`observation.state` columns round-trip exactly; rewrites are verified (row count + untouched-column equality) with a `.bak` kept. Triggered by the panel's **Export** button (dataset-wide) or run standalone from the CLI.
+* **Subtask panel** (`subtask-panel.tsx`, `src/utils/subtaskCsv.ts`, `src/lib/subtask-annotations-store.ts`): edits
+  half-open, contiguous rows; save merges one episode into the CSV server-side, and edited rows (or all rows via
+  "mark episode reviewed") become `annotator=human`. After a save it triggers `distribution` recompute.
+* **Distribution** (`distribution-*.tsx`, `src/utils/distributionData.ts` parser, `distributionMetrics.ts`): metrics are
+  recomputed in TS for the selected episodes and must match the CLI exactly. The last subtask has `end_frame` /
+  `end_pose` = `null` by contract.
+* **Calibration** (`calibration-*.tsx`, `src/lib/calibration-store.ts`): click fingertip midpoints into `points.json`
+  (only after the frame image is confirmed loaded), skip or replace frames, run `calibrate`, verify by overlaying the
+  projected tool point on the head video. Skipped frames stay in `frames.json` as sampling seeds and are hidden in
+  the list by default.
+* **Collection** (`collection-*.tsx`): draw the target polygon, run `suggest`, export PNG/CSV.
+* **Running the CLI**: `src/lib/lerobot-check-runner.ts` runs `uv run --project $LEROBOT_CHECK_DIR lerobot-check …`,
+  one run per dataset at a time. Without `LEROBOT_CHECK_DIR` the buttons only show the copyable command.
+* **v3 row offsets**: `dataset_from_index` is a dataset-global row; a v3 data file holds a slice, so subtract the
+  file's first `index` before reading rows (`EpisodeLocator.rowOffset`). Getting this wrong only shows on episodes
+  outside the first data file.
+* **Fixtures are copies.** `src/utils/__tests__/fixtures/{distribution,suggestions}.example.json` are copied from
+  lerobot-check `tests/fixtures/`. When lerobot-check changes the schema, re-copy them; a stale copy keeps the
+  viewer tests green while the real file fails to parse.
 
 ### Episode switching (in-page, cached, staged)
 
@@ -304,7 +293,7 @@ means and who is allowed to keep rendering.
   `has()`, never truthiness.
 - **None of these caches invalidate.** `src/lib/parquet-server.ts` re-keys on
   `mtime + size`; these do not. A dataset rewritten underneath an open tab
-  (`export_subtasks.py`, an HF sync) keeps serving the parsed copy until it is
+  (an in-place parquet rewrite, an HF sync) keeps serving the parsed copy until it is
   evicted. A reload is the escape hatch. Entries are **shared and must be
   treated as read-only** — mutating a cached `EpisodeData` in place corrupts
   every later reader.
@@ -372,11 +361,11 @@ Shared rules:
 
 The **Parquet** tab (`src/components/parquet-table-panel.tsx`, last in the tab row) renders the raw contents of any parquet file in the dataset as a table — file picker on the left, paged table on the right.
 
-- **Parsing is server-side.** hyparquet's Node entry (`hyparquet/src/node.js` → `asyncBufferFromFile`) reads straight off disk in `src/lib/parquet-server.ts`; only the requested page reaches the browser. v3 packs many episodes into one 100 MB data parquet with a **single row group**, so client-side paging would re-download and re-decode the whole group per page. Warm handles (file + footer) are LRU-cached keyed on `mtime + size`, so an `export_subtasks.py` rewrite invalidates them.
+- **Parsing is server-side.** hyparquet's Node entry (`hyparquet/src/node.js` → `asyncBufferFromFile`) reads straight off disk in `src/lib/parquet-server.ts`; only the requested page reaches the browser. v3 packs many episodes into one 100 MB data parquet with a **single row group**, so client-side paging would re-download and re-decode the whole group per page. Warm handles (file + footer) are LRU-cached keyed on `mtime + size`, so an in-place rewrite invalidates them.
 - **JSON safety** — `toJsonSafe` in `src/utils/parquetBrowser.ts` converts BigInt (→ number, or string past `MAX_SAFE_INTEGER`), typed arrays, `Date`, and byte columns (→ `{__kind:"bytes"}` summary) before the response is serialised. Lists past `MAX_LIST_ITEMS` become `{__kind:"list"}`. All display helpers (`describeCell`, `formatNumber`, `rowsToCsv`, `defaultColumnSelection`, `classifyParquetPath`) are pure and unit-tested.
 - **Column projection is the perf lever** — `?col=` is passed to hyparquet's `columns`, which silently ignores names a file doesn't have. `meta/episodes/*.parquet` carries ~180 columns, so `defaultColumnSelection` opens with 16 (lerobot bookkeeping columns first, schema order preserved) and the rest are opt-in via the Columns menu.
 - **Episode shortcut** — `locateEpisodeRows` dispatches on `codebase_version`. For **v3.0** it walks `meta/episodes/chunk-*/file-*.parquet` (all chunks, not just chunk-000) for the row whose `episode_index` matches, and returns `data/chunk_index` + `data/file_index` + `dataset_from_index`/`dataset_to_index`. For **v2.x** there is no such tree: the episode owns a whole parquet whose path is computed by the pure `buildV2EpisodeDataPath(info, episodeIndex)` from `info.data_path` + `chunks_size`, and the row range is the whole file (`0`–`num_rows`, read from the footer). Null when the episode's file doesn't exist. The tab opens on the current episode's own rows; the header button jumps back there.
-- Read-only. Nothing here writes to a parquet — that stays with `scripts/export_subtasks.py`.
+- Read-only. Nothing here writes to a parquet.
 
 ### Doctor (native TypeScript diagnostics)
 
@@ -402,7 +391,7 @@ The homepage header is a tabbed dashboard: an **All sources** tab holding the co
   `SourceSnapshot.bytes` is **optional and stays at `version: 1`** — a version bump would make `parseHistory` discard the whole file, trading months of real history for one added column. The absence is therefore meaningful, and `SourceDelta.bytes` is `number | null`: a baseline row with no `bytes` yields `null` ("never recorded"), never `0` and never "all of it is new", which would have reported the entire corpus as one day's growth on the first render after the upgrade. One unknown source makes `total.bytes` null rather than a partial sum, `formatDeltaBytes` renders null as `"n/a"` against `"—"` for a genuine zero, and the source panel drops the column entirely while it is unknown. `isFlatDelta` ignores a null byte delta but treats a known non-zero one as change — a re-encode moves bytes without moving any count.
 - `src/lib/corpus-history-store.ts` — atomic `tmp`+`rename` write, swallows its own failures.
 - **HF sync** (`scripts/sync_hf_dataset.py` + `sync/route.ts`): listing always precedes transfer. This gate is not politeness — `lerobot` is a public org with ~188 datasets against 5 held locally, and an unconfirmed sync would pull hundreds of gigabytes. One sync runs at a time, process-wide.
-- **Sync is incremental, and the counter says so.** The org listing asks for `expand=["sha"]`, and a repo is skipped when the remote commit is already present as `<dataset>/.cache/huggingface/trees/<commit>.json` **and** every file that tree lists exists at the listed size. The size check is what catches a copy that was deleted, truncated, or rewritten in place — `export_subtasks.py` does exactly that to the data parquets, so a subtask-compiled dataset reads as pending and a sync will overwrite it. `pending` (not `repos`) is the work list, so the progress reads `1/M` of what actually differs rather than `1/N` of the whole org; `--force` / the panel's "Re-check all" ignores the check. Do not reintroduce a plain "iterate the whole org" loop: `snapshot_download` skips unchanged bytes, but only after a per-file metadata round trip, which is minutes of nothing across a large org.
+- **Sync is incremental, and the counter says so.** The org listing asks for `expand=["sha"]`, and a repo is skipped when the remote commit is already present as `<dataset>/.cache/huggingface/trees/<commit>.json` **and** every file that tree lists exists at the listed size. The size check is what catches a copy that was deleted, truncated, or rewritten in place — any in-place rewrite of the data parquets does exactly that, so such a dataset reads as pending and a sync will overwrite it. `pending` (not `repos`) is the work list, so the progress reads `1/M` of what actually differs rather than `1/N` of the whole org; `--force` / the panel's "Re-check all" ignores the check. Do not reintroduce a plain "iterate the whole org" loop: `snapshot_download` skips unchanged bytes, but only after a per-file metadata round trip, which is minutes of nothing across a large org.
 - **`HF_ENDPOINT` defaults to `https://hf-mirror.com`** — the point is saving proxy/VPN bandwidth, not the mirror itself. Keep the default: if the mirror starts serving again, sync works with no code change.
   As of 2026-08 on the dev machine it does **not** serve. Every path (`/api/...`, `/resolve/...`, models and datasets alike) answers `308 → huggingface.co`, and `huggingface_hub` refuses that redirect because it carries no `X-Repo-Commit` (reproduced on 0.34.4 and 1.22.0, so it is not a version issue, and not Xet either — `HF_HUB_DISABLE_XET=1` changes nothing).
   The likely cause is local, not remote: `hf-mirror.com` resolves to `198.18.0.79` on that machine — a transparent-proxy fake-IP — so the mirror is reached through a foreign exit and bounces the caller to the origin. **While that holds the mirror saves no bandwidth at all**, since the bytes come from `huggingface.co` (`198.18.0.80`, also proxied) either way. The fix is a proxy bypass rule for `hf-mirror.com`, not a code change; DNS is hijacked too, so it cannot be verified from inside the box.
@@ -410,7 +399,7 @@ The homepage header is a tabbed dashboard: an **All sources** tab holding the co
 
 ### Python interpreter resolution
 
-Two routes shell out to Python — `sync/route.ts` (needs `huggingface_hub`) and `subtasks/export/route.ts` (needs `pandas` + `pyarrow`). Neither may assume `python3`: the first one on the dev server's PATH is routinely a shell venv or a bare system Python without the dependencies, and the symptom is an opaque `No module named 'huggingface_hub'` that names the org rather than the interpreter. Both go through `resolvePython(modules)` in `src/lib/python-runtime.ts`.
+`sync/route.ts` shells out to Python (needs `huggingface_hub`) and may not assume `python3`: the first one on the dev server's PATH is routinely a shell venv or a bare system Python without the dependencies, and the symptom is an opaque `No module named 'huggingface_hub'` that names the org rather than the interpreter. It goes through `resolvePython(modules)` in `src/lib/python-runtime.ts`.
 
 Resolution is ordered, and the order is the contract:
 
@@ -430,7 +419,7 @@ python3.12 -m venv .venv && .venv/bin/pip install -r scripts/requirements.txt
 
 **`PYTHONPATH` and `PYTHONHOME` are stripped from every spawn** (`pythonSpawnEnv`, applied to the probe as well so it sees what the real run sees). `PYTHONPATH` is honoured by every Python regardless of version, so a sourced ROS setup — `/opt/ros/humble/.../python3.10/site-packages`, the normal state of a robotics workstation, this one included — prepends 3.10 packages to a 3.12 venv's `sys.path`, shadowing installed modules and crashing on any 3.10-built C extension. `PYTHONHOME` overrides the interpreter's prefix and breaks a venv outright. Neither is wanted by scripts that import stdlib plus their resolved environment and nothing else; without the strip, "resolve the interpreter" would not mean "run against that interpreter's packages".
 
-Both Python scripts also self-diagnose when run directly from the CLI: they report the missing dependency against `sys.executable` instead of letting the `ImportError` surface through an unrelated handler.
+The sync script also self-diagnoses when run directly from the CLI: it reports the missing dependency against `sys.executable` instead of letting the `ImportError` surface through an unrelated handler.
 
 ### Internationalisation (English ⇄ 简体中文)
 
@@ -465,69 +454,59 @@ Every user-facing panel is translated (625 keys). To extend: add keys to both di
 
 ## Key files
 
-| File                                                              | Purpose                                                                                                                                                            |
-| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `src/i18n/messages/en.ts`                                         | Source dictionary (flat dotted keys); `MessageKey` derives from it. `zh.ts` is the typed translation                                                               |
-| `src/i18n/config.ts`                                              | `Locale`, `parseLocale`, `htmlLang`, the `xense-locale` cookie contract — pure, unit-tested                                                                        |
-| `src/i18n/format.ts` / `rich.tsx`                                 | `interpolate` / `pluralKey`; `richInterpolate` for React-node placeholders                                                                                         |
-| `src/context/locale-context.tsx`                                  | `LocaleProvider` (mounted in the root layout) + `useLocale()` / `useT()` → `t`, `tp`, `tRich`, `tpRich`                                                            |
-| `src/components/language-switcher.tsx`                            | EN / 中 toggle for the top right of each page header                                                                                                               |
-| `src/lib/dataset-facets.ts`                                       | Pure browsing facets: bucket, capture dates, and the robot→shape table (`expectedShapeOf`, `shapeAnomalyOf`) — no `node:` imports                                  |
-| `src/lib/dataset-facets-server.ts`                                | Server half: reads capture dates off disk and derives shape from `info.json` features                                                                              |
-| `src/utils/corpusFilters.ts`                                      | Pure secondary filters for one category — bucket, capture date, odd-shape shortcut, and the chip counts                                                            |
-| `src/app/dataset-card-grid.tsx`                                   | The dataset grid: name/robot/tag/health/bucket/date filters, shape badges, per-card tag editor and Delete; its text filter is a controlled prop                    |
-| `src/lib/local-datasets-discovery.ts`                             | Server-side scanner: walks the local root, returns datasets + `DatasetIntegrity`                                                                                   |
-| `src/lib/dataset-size-cache.ts`                                   | Remembered `directorySizeBytes` per dataset, fingerprinted on directory mtimes — 96% of a big location's scan                                                      |
-| `src/app/page.tsx`                                                | Server component → calls `discoverLocalDatasets()` → renders `LocalDatasetGrid`                                                                                    |
-| `src/app/local-dataset-grid.tsx`                                  | The homepage shell: header + path switcher, corpus dashboard, HF-id panel, scan errors, and the one flat `DatasetCardGrid`                                         |
-| `src/app/_local/[encodedPath]/[episode]/page.tsx`                 | Server health probe + `EpisodeViewer` mount (the only live entry into the viewer)                                                                                  |
-| `src/app/api/local-datasets/route.ts`                             | `GET /api/local-datasets` — discovery API for clients                                                                                                              |
-| `src/app/api/local-datasets/[encodedPath]/[...filePath]/route.ts` | `GET`/`HEAD` for individual files, range-aware for video                                                                                                           |
-| `src/app/api/local-datasets/[encodedPath]/annotations/route.ts`   | `GET`/`PUT` the `meta/lerobot_annotations.json` annotation sidecar                                                                                                 |
-| `src/app/[org]/[dataset]/[episode]/episode-viewer.tsx`            | Tabbed viewer (Episodes / Annotations / 3D Replay / Statistics / Filtering / Frames / Action Insights / Parquet); hosts `AnnotationsProvider` + `EpisodeBootstrap` |
-| `src/app/[org]/[dataset]/[episode]/fetch-data.ts`                 | Main data-loading entry point; v2/v3 parsers; `computeColumnMinMax`; `extractLanguageAtoms`                                                                        |
-| `src/types/language.types.ts`                                     | v3.1 language atom schema + pure helpers (`snapToFrame`, `activeAt`, `partitionAtoms`, VQA parsing)                                                                |
-| `src/context/annotations-context.tsx`                             | Per-episode annotation state; sessionStorage live buffer + sidecar hydration                                                                                       |
-| `src/utils/annotationsClient.ts`                                  | Local-only persistence client → `…/[encodedPath]/annotations` route (no FastAPI backend)                                                                           |
-| `src/components/annotations-panel.tsx`                            | Annotations editor: quick-add bar, atom list, inspector, "Save episode"                                                                                            |
-| `src/components/annotations-timeline.tsx`                         | Multi-track atom timeline (one lane per kind, click-to-seek, drag spans)                                                                                           |
-| `src/components/video-overlay-canvas.tsx`                         | Draw bbox/keypoint on a video → grounded-VQA atom; mounted only when `SimpleVideosPlayer` is given `annotationOverlay`                                             |
-| `src/types/subtask.types.ts`                                      | Pi-style subtask segment schema + pure helpers (`activeSegmentAt`, `insertSubtaskAt`, `normalizeSegments`, frame↔time)                                             |
-| `src/components/subtask-panel.tsx`                                | Annotations-tab subtask labeler: active-subtask banner, quick-add, segment strip, list/inspector, Save + Export                                                    |
-| `src/utils/subtasksClient.ts`                                     | Client for the `…/[encodedPath]/subtasks` + `/subtasks/export` routes                                                                                              |
-| `src/lib/local-dataset-paths.ts`                                  | Shared server path resolution + traversal guard for every per-dataset route                                                                                        |
-| `src/lib/python-runtime.ts`                                       | `resolvePython(modules)`: PYTHON_BIN → local venv/active env → PATH → conda-env scan, memoised, with a fix-it error                                                |
-| `src/lib/parquet-server.ts`                                       | Node-side hyparquet reader: LRU file handles, schema→type strings, `readParquetPage`, `locateEpisodeRows`                                                          |
-| `src/lib/doctor/`                                                 | Native TypeScript Doctor loader, math helpers, MP4 structural probe, 13 checks, and report runner                                                                  |
-| `src/components/doctor-panel.tsx`                                 | Doctor scope controls, report filters/download, and affected-episode flagging                                                                                      |
-| `src/components/parquet-table-panel.tsx`                          | Parquet tab: file picker, column picker, paged sticky table, cell expansion, CSV export                                                                            |
-| `src/utils/parquetBrowser.ts`                                     | Pure helpers: `toJsonSafe`, `describeCell`, `defaultColumnSelection`, `rowsToCsv`, file classify/sort                                                              |
-| `src/utils/byteSize.ts`                                           | The one `formatBytes` (binary units), shared by the parquet file picker and the homepage storage figures                                                           |
-| `src/utils/parquetBrowserClient.ts`                               | Client for the `…/[encodedPath]/parquet` + `/parquet/read` routes                                                                                                  |
-| `src/components/repo-fetch-panel.tsx`                             | Homepage "download a dataset by Hugging Face id" panel — the only way to pull a source not yet on disk                                                             |
-| `src/components/sync-progress.tsx`                                | Shared sync transfer/outcome views + `formatTransferred` (decimal, Hub-facing)                                                                                     |
-| `scripts/export_subtasks.py`                                      | pyarrow: compile `meta/annotations.json` → per-frame `subtask_index` + `meta/subtasks.parquet` + `info.json` (backup + verify)                                     |
-| `src/components/urdf-viewer.tsx`                                  | 3D viewer; loads standard URDFs from the HF bucket and bundled TacCap grippers; `autoMatchJoints` does column→joint mapping                                        |
-| `src/utils/taccapGripperReplay.ts`                                | TacCap left/right TCP + opening extraction, source selection, interpolation, and normalized finger command                                                         |
-| `src/utils/poseTrajectory3d.ts`                                   | Named xyz(+r1–r6) pose extraction from chart rows, memoised per rows array; sampling/interpolation; `selectTrailStartIndex` (trail window)                         |
-| `src/utils/spatialTrajectories.ts`                                | Cross-episode spatial layers: axis-group discovery, point budget, `spatialLayerFeatureKey` — pure                                                                  |
-| `src/utils/scene3d.ts`                                            | The one Z-up→Y-up `toScenePoint`, scene bounds, and grid stepping — shared by both 3D viewers                                                                      |
-| `src/components/scene3d-guides.tsx`                               | Shared `AxisGuide` / `CameraFit` (per-viewer `offset`) / `ControlsHandle`                                                                                          |
-| `src/components/spatial-trajectory-viewer.tsx`                    | Action Insights cross-episode trajectory view: layer toggles, episode legend, hover/isolate                                                                        |
-| `src/components/episode-pose-3d-viewer.tsx`                       | Episodes-tab `3D` chart mode: single-episode pose path with a video-synced marker                                                                                  |
-| `src/utils/urdfReplayVideos.ts`                                   | Groups replay cameras into left / top-center / right by `left`/`right`/`head` tokens — pure                                                                        |
-| `src/utils/videoSegments.ts`                                      | Episode-local time ↔ the shared v3 MP4's media clock, both directions, each clamped into the segment — pure                                                        |
-| `src/utils/sampling.ts`                                           | `evenlySampleIndices` / `evenlySampleArray` — unique, sorted, first-and-last-preserving downsampling                                                               |
-| `src/utils/lruCache.ts`                                           | `touchLru` / `rememberInLru` — the one insertion-ordered LRU policy, shared by the three episode caches                                                            |
-| `src/utils/viewerShortcuts.ts`                                    | Pure focus rules for the global viewer shortcuts (`describeShortcutTarget`, `blocksAllShortcuts`, `yieldsSpaceShortcut`)                                           |
-| `src/utils/versionUtils.ts`                                       | `getDatasetInfo`, `getDatasetVersionAndInfo`, `buildVersionedUrl` (local-only)                                                                                     |
-| `src/utils/datasetRoute.ts`                                       | `local:` repoId wrapper, base64url encode, route ↔ repoId conversion                                                                                               |
-| `src/utils/stringFormatting.ts`                                   | `buildV3DataPath`, `buildV3VideoPath`, `buildV3EpisodesMetadataPath`, padding helpers                                                                              |
-| `src/utils/parquetUtils.ts`                                       | `fetchParquetFile`, `readParquetAsObjects`, `formatStringWithVars`                                                                                                 |
-| `src/utils/gripperSeries.ts`                                      | Pure gripper-series selection behind the Episodes chart `Gripper only` filter                                                                                      |
-| `src/utils/dataProcessing.ts`                                     | Chart grouping pipeline: `buildSuffixGroupsMap` → `computeGroupStats` → `groupByScale` → `flattenScaleGroups` → `processChartDataGroups`                           |
-| `src/utils/typeGuards.ts`                                         | `bigIntToNumber`, `isNumeric`, `isValidTaskIndex`, etc.                                                                                                            |
-| `src/utils/constants.ts`                                          | `PADDING`, `EXCLUDED_COLUMNS`, `CHART_CONFIG`, `THRESHOLDS`                                                                                                        |
+| File                                                              | Purpose                                                                                                                                         |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/i18n/messages/en.ts`                                         | Source dictionary (flat dotted keys); `MessageKey` derives from it. `zh.ts` is the typed translation                                            |
+| `src/i18n/config.ts`                                              | `Locale`, `parseLocale`, `htmlLang`, the `xense-locale` cookie contract — pure, unit-tested                                                     |
+| `src/i18n/format.ts` / `rich.tsx`                                 | `interpolate` / `pluralKey`; `richInterpolate` for React-node placeholders                                                                      |
+| `src/context/locale-context.tsx`                                  | `LocaleProvider` (mounted in the root layout) + `useLocale()` / `useT()` → `t`, `tp`, `tRich`, `tpRich`                                         |
+| `src/components/language-switcher.tsx`                            | EN / 中 toggle for the top right of each page header                                                                                            |
+| `src/lib/dataset-facets.ts`                                       | Pure browsing facets: bucket, capture dates, and the robot→shape table (`expectedShapeOf`, `shapeAnomalyOf`) — no `node:` imports               |
+| `src/lib/dataset-facets-server.ts`                                | Server half: reads capture dates off disk and derives shape from `info.json` features                                                           |
+| `src/utils/corpusFilters.ts`                                      | Pure secondary filters for one category — bucket, capture date, odd-shape shortcut, and the chip counts                                         |
+| `src/app/dataset-card-grid.tsx`                                   | The dataset grid: name/robot/tag/health/bucket/date filters, shape badges, per-card tag editor and Delete; its text filter is a controlled prop |
+| `src/lib/local-datasets-discovery.ts`                             | Server-side scanner: walks the local root, returns datasets + `DatasetIntegrity`                                                                |
+| `src/lib/dataset-size-cache.ts`                                   | Remembered `directorySizeBytes` per dataset, fingerprinted on directory mtimes — 96% of a big location's scan                                   |
+| `src/app/page.tsx`                                                | Server component → calls `discoverLocalDatasets()` → renders `LocalDatasetGrid`                                                                 |
+| `src/app/local-dataset-grid.tsx`                                  | The homepage shell: header + path switcher, corpus dashboard, HF-id panel, scan errors, and the one flat `DatasetCardGrid`                      |
+| `src/app/_local/[encodedPath]/[episode]/page.tsx`                 | Server health probe + `EpisodeViewer` mount (the only live entry into the viewer)                                                               |
+| `src/app/api/local-datasets/route.ts`                             | `GET /api/local-datasets` — discovery API for clients                                                                                           |
+| `src/app/api/local-datasets/[encodedPath]/[...filePath]/route.ts` | `GET`/`HEAD` for individual files, range-aware for video                                                                                        |
+| `src/app/[org]/[dataset]/[episode]/episode-viewer.tsx`            | Tabbed viewer (Episodes / Annotations / 3D Replay / Statistics / Filtering / Frames / Action Insights / Parquet)                                |
+| `src/app/[org]/[dataset]/[episode]/fetch-data.ts`                 | Main data-loading entry point; v2/v3 parsers; `computeColumnMinMax`; `extractLanguageAtoms`                                                     |
+| `src/components/subtask-panel.tsx`                                | Annotations-tab Subtask panel: edits the lerobot-check subtask CSV, marks episodes reviewed, triggers distribution recompute                    |
+| `src/lib/local-dataset-paths.ts`                                  | Shared server path resolution + traversal guard for every per-dataset route                                                                     |
+| `src/lib/python-runtime.ts`                                       | `resolvePython(modules)`: PYTHON_BIN → local venv/active env → PATH → conda-env scan, memoised, with a fix-it error                             |
+| `src/lib/parquet-server.ts`                                       | Node-side hyparquet reader: LRU file handles, schema→type strings, `readParquetPage`, `locateEpisodeRows`                                       |
+| `src/lib/doctor/`                                                 | Native TypeScript Doctor loader, math helpers, MP4 structural probe, 13 checks, and report runner                                               |
+| `src/components/doctor-panel.tsx`                                 | Doctor scope controls, report filters/download, and affected-episode flagging                                                                   |
+| `src/components/parquet-table-panel.tsx`                          | Parquet tab: file picker, column picker, paged sticky table, cell expansion, CSV export                                                         |
+| `src/utils/parquetBrowser.ts`                                     | Pure helpers: `toJsonSafe`, `describeCell`, `defaultColumnSelection`, `rowsToCsv`, file classify/sort                                           |
+| `src/utils/byteSize.ts`                                           | The one `formatBytes` (binary units), shared by the parquet file picker and the homepage storage figures                                        |
+| `src/utils/parquetBrowserClient.ts`                               | Client for the `…/[encodedPath]/parquet` + `/parquet/read` routes                                                                               |
+| `src/components/repo-fetch-panel.tsx`                             | Homepage "download a dataset by Hugging Face id" panel — the only way to pull a source not yet on disk                                          |
+| `src/components/sync-progress.tsx`                                | Shared sync transfer/outcome views + `formatTransferred` (decimal, Hub-facing)                                                                  |
+| `src/components/urdf-viewer.tsx`                                  | 3D viewer; loads standard URDFs from the HF bucket and bundled TacCap grippers; `autoMatchJoints` does column→joint mapping                     |
+| `src/utils/taccapGripperReplay.ts`                                | TacCap left/right TCP + opening extraction, source selection, interpolation, and normalized finger command                                      |
+| `src/utils/poseTrajectory3d.ts`                                   | Named xyz(+r1–r6) pose extraction from chart rows, memoised per rows array; sampling/interpolation; `selectTrailStartIndex` (trail window)      |
+| `src/utils/spatialTrajectories.ts`                                | Cross-episode spatial layers: axis-group discovery, point budget, `spatialLayerFeatureKey` — pure                                               |
+| `src/utils/scene3d.ts`                                            | The one Z-up→Y-up `toScenePoint`, scene bounds, and grid stepping — shared by both 3D viewers                                                   |
+| `src/components/scene3d-guides.tsx`                               | Shared `AxisGuide` / `CameraFit` (per-viewer `offset`) / `ControlsHandle`                                                                       |
+| `src/components/spatial-trajectory-viewer.tsx`                    | Action Insights cross-episode trajectory view: layer toggles, episode legend, hover/isolate                                                     |
+| `src/components/episode-pose-3d-viewer.tsx`                       | Episodes-tab `3D` chart mode: single-episode pose path with a video-synced marker                                                               |
+| `src/utils/urdfReplayVideos.ts`                                   | Groups replay cameras into left / top-center / right by `left`/`right`/`head` tokens — pure                                                     |
+| `src/utils/videoSegments.ts`                                      | Episode-local time ↔ the shared v3 MP4's media clock, both directions, each clamped into the segment — pure                                     |
+| `src/utils/sampling.ts`                                           | `evenlySampleIndices` / `evenlySampleArray` — unique, sorted, first-and-last-preserving downsampling                                            |
+| `src/utils/lruCache.ts`                                           | `touchLru` / `rememberInLru` — the one insertion-ordered LRU policy, shared by the three episode caches                                         |
+| `src/utils/viewerShortcuts.ts`                                    | Pure focus rules for the global viewer shortcuts (`describeShortcutTarget`, `blocksAllShortcuts`, `yieldsSpaceShortcut`)                        |
+| `src/utils/versionUtils.ts`                                       | `getDatasetInfo`, `getDatasetVersionAndInfo`, `buildVersionedUrl` (local-only)                                                                  |
+| `src/utils/datasetRoute.ts`                                       | `local:` repoId wrapper, base64url encode, route ↔ repoId conversion                                                                            |
+| `src/utils/stringFormatting.ts`                                   | `buildV3DataPath`, `buildV3VideoPath`, `buildV3EpisodesMetadataPath`, padding helpers                                                           |
+| `src/utils/parquetUtils.ts`                                       | `fetchParquetFile`, `readParquetAsObjects`, `formatStringWithVars`                                                                              |
+| `src/utils/gripperSeries.ts`                                      | Pure gripper-series selection behind the Episodes chart `Gripper only` filter                                                                   |
+| `src/utils/dataProcessing.ts`                                     | Chart grouping pipeline: `buildSuffixGroupsMap` → `computeGroupStats` → `groupByScale` → `flattenScaleGroups` → `processChartDataGroups`        |
+| `src/utils/typeGuards.ts`                                         | `bigIntToNumber`, `isNumeric`, `isValidTaskIndex`, etc.                                                                                         |
+| `src/utils/constants.ts`                                          | `PADDING`, `EXCLUDED_COLUMNS`, `CHART_CONFIG`, `THRESHOLDS`                                                                                     |
 
 ## Time context: state vs controls
 
