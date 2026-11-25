@@ -14,6 +14,7 @@ import type {
   CalibrationTcpPose,
   Matrix4RowMajor,
 } from "@/types/calibration.types";
+import { residualNormPx } from "@/utils/calibrationMath";
 
 export const EMPTY_CALIBRATION_MERGE_NOTICE: CalibrationMergeNotice = {
   droppedFrameMismatchCount: 0,
@@ -690,4 +691,42 @@ export function frameEntryToBase(
   delete copy.pixel;
   delete copy.skipped;
   return copy;
+}
+
+export const MIN_RESIDUAL_REVIEW_PX = 15;
+
+export interface RankedCalibrationResidual extends CalibrationResidual {
+  normPx: number;
+  needsReview: boolean;
+}
+
+export function computeResidualReviewThresholdPx(
+  residuals: readonly CalibrationResidual[],
+): number {
+  if (residuals.length === 0) return MIN_RESIDUAL_REVIEW_PX;
+  const norms = residuals.map(residualNormPx).sort((a, b) => a - b);
+  const mid = Math.floor(norms.length / 2);
+  const median =
+    norms.length % 2 === 1 ? norms[mid] : (norms[mid - 1] + norms[mid]) / 2;
+  return Math.max(3 * median, MIN_RESIDUAL_REVIEW_PX);
+}
+
+export function rankCalibrationResiduals(
+  residuals: readonly CalibrationResidual[],
+): {
+  thresholdPx: number;
+  items: RankedCalibrationResidual[];
+} {
+  const thresholdPx = computeResidualReviewThresholdPx(residuals);
+  const items = residuals
+    .map((res) => {
+      const normPx = residualNormPx(res);
+      return {
+        ...res,
+        normPx,
+        needsReview: normPx > thresholdPx,
+      };
+    })
+    .sort((a, b) => b.normPx - a.normPx);
+  return { thresholdPx, items };
 }

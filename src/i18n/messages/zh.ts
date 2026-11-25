@@ -970,6 +970,8 @@ export const zh: Record<MessageKey, string> = {
   "calib.resultsTitle": "标定结果（head.json）",
   "calib.openOverlay": "进入叠加验证",
   "calib.residualsTitle": "各点残差（点击跳至该帧对比重投影）",
+  "calib.reviewBadge": "复查",
+  "calib.reviewThreshold": "复查阈值 > {px} px",
   "calib.distortionWarning":
     "检测到非零相机畸变系数：当前重投影叠加仅使用针孔模型，已忽略畸变项。",
   "calib.mergeIdentityMismatch":

@@ -22,12 +22,12 @@ import {
   groupCalibrationFramesByArm,
   isFrameClicked,
   isFrameSkipped,
+  rankCalibrationResiduals,
   summarizeCalibrationProgress,
 } from "@/utils/calibrationData";
 import {
   hasNonZeroDistortion,
   projectTcpToPixel,
-  residualNormPx,
 } from "@/utils/calibrationMath";
 import { copyTextToClipboard } from "@/utils/clipboard";
 import {
@@ -83,6 +83,8 @@ export default function CalibrationPanel({
   const episodeMediaCacheRef = useRef<
     Map<string, CalibrationEpisodeMediaPayload>
   >(new Map());
+  const stateFetchSeqRef = useRef(0);
+  const canvasSectionRef = useRef<HTMLDivElement | null>(null);
   const [activeEpisodeMedia, setActiveEpisodeMedia] =
     useState<CalibrationEpisodeMediaPayload | null>(null);
   const [episodeMediaLoading, setEpisodeMediaLoading] = useState(false);
@@ -91,6 +93,7 @@ export default function CalibrationPanel({
   );
 
   const fetchState = useCallback(async () => {
+    const requestSeq = ++stateFetchSeqRef.current;
     if (!encodedPath) {
       setLoading(false);
       setState(null);
@@ -106,6 +109,7 @@ export default function CalibrationPanel({
         },
       );
       const body = await res.json().catch(() => ({}));
+      if (requestSeq !== stateFetchSeqRef.current) return;
       if (!res.ok) {
         setLoadError(
           String((body as { error?: string }).error ?? `HTTP ${res.status}`),
@@ -120,14 +124,19 @@ export default function CalibrationPanel({
         return next.frames[0]?.id ?? null;
       });
     } catch (err) {
+      if (requestSeq !== stateFetchSeqRef.current) return;
       setLoadError(err instanceof Error ? err.message : String(err));
     } finally {
-      setLoading(false);
+      if (requestSeq === stateFetchSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, [encodedPath]);
 
   useEffect(() => {
     episodeMediaCacheRef.current.clear();
+    setActiveEpisodeMedia(null);
+    setEpisodeMediaError(null);
     setDraftUpdates({});
     setSaveFeedback(null);
     setCliBanner(null);
@@ -173,12 +182,37 @@ export default function CalibrationPanel({
 
   const unsavedCount = Object.keys(draftUpdates).length;
 
+  const selectedEpisodeIndex = selectedFrame?.episode_index ?? null;
+  const selectedCamera = state?.camera ?? null;
+
+  const matchedEpisodeMedia = useMemo(() => {
+    if (
+      !activeEpisodeMedia ||
+      selectedEpisodeIndex === null ||
+      selectedCamera === null
+    ) {
+      return null;
+    }
+    if (
+      activeEpisodeMedia.episodeIndex !== selectedEpisodeIndex ||
+      activeEpisodeMedia.camera !== selectedCamera
+    ) {
+      return null;
+    }
+    return activeEpisodeMedia;
+  }, [activeEpisodeMedia, selectedCamera, selectedEpisodeIndex]);
+
   // Fetch head camera segment metadata for the currently selected frame's episode.
   useEffect(() => {
-    if (!encodedPath || !state || !selectedFrame || mode !== "annotate") {
+    if (
+      !encodedPath ||
+      selectedEpisodeIndex === null ||
+      selectedCamera === null ||
+      mode !== "annotate"
+    ) {
       return;
     }
-    const cacheKey = `${selectedFrame.episode_index}:${state.camera}`;
+    const cacheKey = `${selectedEpisodeIndex}:${selectedCamera}`;
     const cached = episodeMediaCacheRef.current.get(cacheKey);
     if (cached) {
       setActiveEpisodeMedia(cached);
@@ -187,17 +221,20 @@ export default function CalibrationPanel({
       return;
     }
 
+    const controller = new AbortController();
     let cancelled = false;
+    setActiveEpisodeMedia(null);
     setEpisodeMediaLoading(true);
     setEpisodeMediaError(null);
     const params = new URLSearchParams({
-      episode: String(selectedFrame.episode_index),
-      camera: state.camera,
+      episode: String(selectedEpisodeIndex),
+      camera: selectedCamera,
       includeTcp: "0",
     });
 
     fetch(`/api/local-datasets/${encodedPath}/calibration/episode?${params}`, {
       cache: "no-store",
+      signal: controller.signal,
     })
       .then(async (res) => {
         const body = await res.json().catch(() => ({}));
@@ -215,6 +252,7 @@ export default function CalibrationPanel({
       })
       .catch((err: unknown) => {
         if (cancelled) return;
+        if (err instanceof DOMException && err.name === "AbortError") return;
         setEpisodeMediaError(err instanceof Error ? err.message : String(err));
         setActiveEpisodeMedia(null);
       })
@@ -224,8 +262,9 @@ export default function CalibrationPanel({
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [encodedPath, mode, selectedFrame, state]);
+  }, [encodedPath, mode, selectedCamera, selectedEpisodeIndex]);
 
   const setFrameDraft = useCallback(
     (id: string, update: CalibrationPointUpdate) => {
@@ -472,6 +511,18 @@ export default function CalibrationPanel({
     selectNextRemaining,
     selectRelative,
   ]);
+
+  const reviewFrameIds = useMemo(() => {
+    const flagged = new Set<string>();
+    if (!state?.head) return flagged;
+    for (const arm of Object.values(state.head.arms)) {
+      const { items } = rankCalibrationResiduals(arm.residuals);
+      for (const item of items) {
+        if (item.needsReview) flagged.add(item.id);
+      }
+    }
+    return flagged;
+  }, [state]);
 
   const selectedReprojection = useMemo(() => {
     if (!selectedFrame || !state?.head) return null;
@@ -801,13 +852,23 @@ export default function CalibrationPanel({
               <div className="flex flex-col gap-3">
                 {selectedFrame && (
                   <>
-                    <div className="panel p-3.5">
+                    <div ref={canvasSectionRef} className="panel p-3.5">
                       <CalibrationFrameCanvas
                         frame={selectedFrame}
                         imageSize={state.imageSize}
-                        video={activeEpisodeMedia?.video ?? null}
-                        fps={activeEpisodeMedia?.fps ?? fps}
-                        loading={episodeMediaLoading}
+                        video={matchedEpisodeMedia?.video ?? null}
+                        mediaEpisodeIndex={
+                          matchedEpisodeMedia?.episodeIndex ?? null
+                        }
+                        episodeLength={
+                          matchedEpisodeMedia?.episodeLength ?? null
+                        }
+                        fps={matchedEpisodeMedia?.fps ?? fps}
+                        loading={
+                          episodeMediaLoading ||
+                          (matchedEpisodeMedia === null &&
+                            episodeMediaError === null)
+                        }
                         error={episodeMediaError}
                         reprojected={selectedReprojection}
                         onSetPixel={handleSetPixel}
@@ -1000,6 +1061,7 @@ export default function CalibrationPanel({
                               const clicked = isFrameClicked(frame);
                               const skipped = isFrameSkipped(frame);
                               const dirty = Boolean(draftUpdates[frame.id]);
+                              const needsReview = reviewFrameIds.has(frame.id);
                               return (
                                 <button
                                   key={frame.id}
@@ -1024,6 +1086,11 @@ export default function CalibrationPanel({
                                     <span className="font-mono truncate">
                                       {frame.id}
                                     </span>
+                                    {needsReview && (
+                                      <span className="shrink-0 rounded border border-rose-400/40 bg-rose-500/20 px-1 py-0.5 text-[10px] leading-none font-medium text-rose-200">
+                                        {t("calib.reviewBadge")}
+                                      </span>
+                                    )}
                                     {dirty && (
                                       <span className="text-[10px] text-amber-300">
                                         *
@@ -1078,9 +1145,8 @@ export default function CalibrationPanel({
 
                     <div className="space-y-3">
                       {Object.entries(state.head.arms).map(([armName, arm]) => {
-                        const sortedResiduals = [...arm.residuals].sort(
-                          (a, b) => residualNormPx(b) - residualNormPx(a),
-                        );
+                        const { thresholdPx, items: sortedResiduals } =
+                          rankCalibrationResiduals(arm.residuals);
                         return (
                           <div
                             key={armName}
@@ -1136,12 +1202,18 @@ export default function CalibrationPanel({
 
                             {sortedResiduals.length > 0 && (
                               <div className="space-y-1">
-                                <p className="text-[10px] uppercase tracking-wide text-slate-500">
-                                  {t("calib.residualsTitle")}
-                                </p>
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="text-[10px] uppercase tracking-wide text-slate-500">
+                                    {t("calib.residualsTitle")}
+                                  </p>
+                                  <span className="shrink-0 font-mono text-[10px] text-slate-500 tabular">
+                                    {t("calib.reviewThreshold", {
+                                      px: thresholdPx.toFixed(1),
+                                    })}
+                                  </span>
+                                </div>
                                 <div className="max-h-36 space-y-1 overflow-y-auto pr-0.5">
                                   {sortedResiduals.map((res) => {
-                                    const norm = residualNormPx(res);
                                     const active = res.id === selectedId;
                                     return (
                                       <button
@@ -1150,28 +1222,47 @@ export default function CalibrationPanel({
                                         onClick={() => {
                                           setMode("annotate");
                                           setSelectedId(res.id);
+                                          canvasSectionRef.current?.scrollIntoView(
+                                            {
+                                              behavior: "smooth",
+                                              block: "nearest",
+                                            },
+                                          );
                                         }}
-                                        className={`flex w-full items-center justify-between rounded px-2 py-1 font-mono text-[11px] transition-colors ${
+                                        className={`flex w-full items-center justify-between gap-1.5 rounded px-2 py-1 font-mono text-[11px] transition-colors ${
                                           active
                                             ? "bg-cyan-500/20 text-cyan-100"
-                                            : "bg-white/5 text-slate-300 hover:bg-white/10"
+                                            : res.needsReview
+                                              ? "border border-rose-500/35 bg-rose-500/10 text-rose-100 hover:bg-rose-500/20"
+                                              : "bg-white/5 text-slate-300 hover:bg-white/10"
                                         }`}
                                       >
-                                        <span>{res.id}</span>
-                                        <span className="text-slate-400">
+                                        <span className="flex items-center gap-1.5 min-w-0">
+                                          <span className="truncate">
+                                            {res.id}
+                                          </span>
+                                          {res.needsReview && (
+                                            <span className="shrink-0 rounded border border-rose-400/50 bg-rose-500/25 px-1 py-0.5 font-sans text-[10px] leading-none font-medium text-rose-100">
+                                              {t("calib.reviewBadge")}
+                                            </span>
+                                          )}
+                                        </span>
+                                        <span className="text-slate-400 shrink-0">
                                           ({res.du >= 0 ? "+" : ""}
                                           {res.du.toFixed(1)},{" "}
                                           {res.dv >= 0 ? "+" : ""}
                                           {res.dv.toFixed(1)})
                                         </span>
                                         <span
-                                          className={
-                                            norm <= 5
-                                              ? "text-emerald-300"
-                                              : "text-amber-300"
-                                          }
+                                          className={`shrink-0 ${
+                                            res.needsReview
+                                              ? "font-semibold text-rose-300"
+                                              : res.normPx <= 5
+                                                ? "text-emerald-300"
+                                                : "text-amber-300"
+                                          }`}
                                         >
-                                          {norm.toFixed(1)} px
+                                          {res.normPx.toFixed(1)} px
                                         </span>
                                       </button>
                                     );

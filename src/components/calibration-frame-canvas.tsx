@@ -1,24 +1,38 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { useT } from "@/context/locale-context";
 import type {
   CalibrationEpisodeVideoInfo,
   CalibrationPixel,
   CalibrationPointEntry,
 } from "@/types/calibration.types";
-import type { ProjectedPixel } from "@/utils/calibrationMath";
 import {
-  createCoalescedSeeker,
-  type CoalescedSeeker,
-} from "@/utils/coalescedSeek";
-import { frameToTime } from "@/utils/subtaskEditor";
-import { mediaTimeFromEpisodeTime } from "@/utils/videoSegments";
+  canAcceptCalibrationCanvasClick,
+  computeTargetCalibrationMediaTime,
+  createInitialCalibrationFrameState,
+  decodedFrameIndexFromMediaTime,
+  isMediaAtSelectedFrame,
+  reduceCalibrationFrameState,
+  targetsMatch,
+  type DisplayedCalibrationFrame,
+  type SelectedCalibrationTarget,
+} from "@/utils/calibrationFrameState";
+import type { ProjectedPixel } from "@/utils/calibrationMath";
 
 interface CalibrationFrameCanvasProps {
   frame: CalibrationPointEntry;
   imageSize: [number, number];
   video: CalibrationEpisodeVideoInfo | null;
+  mediaEpisodeIndex: number | null;
+  episodeLength?: number | null;
   fps: number;
   loading: boolean;
   error: string | null;
@@ -34,6 +48,8 @@ export function CalibrationFrameCanvas({
   frame,
   imageSize,
   video,
+  mediaEpisodeIndex,
+  episodeLength = null,
   fps,
   loading,
   error,
@@ -46,10 +62,24 @@ export function CalibrationFrameCanvas({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const loupeCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const seekerRef = useRef<CoalescedSeeker | null>(null);
+  const loadedSrcRef = useRef<string | null>(null);
+  const activeSeekTargetRef = useRef<number | null>(null);
+  const drawnFrameRef = useRef<DisplayedCalibrationFrame | null>(null);
 
-  const [videoReady, setVideoReady] = useState(false);
-  const [videoError, setVideoError] = useState<string | null>(null);
+  const selectedTarget = useMemo<SelectedCalibrationTarget>(
+    () => ({
+      id: frame.id,
+      episodeIndex: frame.episode_index,
+      frameIndex: frame.frame_index,
+    }),
+    [frame.episode_index, frame.frame_index, frame.id],
+  );
+
+  const [frameState, dispatchFrameState] = useReducer(
+    reduceCalibrationFrameState,
+    selectedTarget,
+    createInitialCalibrationFrameState,
+  );
   const [frameRevision, setFrameRevision] = useState(0);
 
   const [viewZoom, setViewZoom] = useState<(typeof ZOOM_LEVELS)[number]>(1);
@@ -88,7 +118,6 @@ export function CalibrationFrameCanvas({
     [imgHeight, imgWidth],
   );
 
-  // Compute the currently visible crop rectangle in image pixel coordinates.
   const viewportRect = useCallback(() => {
     const sw = imgWidth / viewZoom;
     const sh = imgHeight / viewZoom;
@@ -101,7 +130,6 @@ export function CalibrationFrameCanvas({
     };
   }, [clampPan, imgHeight, imgWidth, panCenter, viewZoom]);
 
-  // Reset pan when frame dimensions change or switching back to 1x.
   useEffect(() => {
     if (viewZoom === 1) {
       setPanCenter([imgWidth / 2, imgHeight / 2]);
@@ -110,81 +138,166 @@ export function CalibrationFrameCanvas({
     }
   }, [clampPan, frame.id, frame.pixel, imgHeight, imgWidth, viewZoom]);
 
-  // Attach coalesced seeker to the hidden video element.
-  useEffect(() => {
-    const el = videoRef.current;
-    if (!el) return;
-    const seeker = createCoalescedSeeker(el, 1e-4);
-    seekerRef.current = seeker;
-    return () => {
-      seeker.dispose();
-      seekerRef.current = null;
-    };
-  }, []);
+  const videoMatchesEpisode =
+    video !== null && mediaEpisodeIndex === selectedTarget.episodeIndex;
 
-  // Seek to exact frame midpoint `(frame_index + 0.5) / fps` inside segment.
-  const targetMediaTime = video
-    ? mediaTimeFromEpisodeTime(video, frameToTime(frame.frame_index, fps))
-    : 0;
+  const targetMediaTime = videoMatchesEpisode
+    ? computeTargetCalibrationMediaTime(video, selectedTarget.frameIndex, fps)
+    : null;
+
+  useEffect(() => {
+    drawnFrameRef.current = null;
+    activeSeekTargetRef.current = null;
+    dispatchFrameState({ type: "select", target: selectedTarget });
+  }, [selectedTarget]);
 
   useEffect(() => {
     const el = videoRef.current;
-    if (!el || !video) {
-      setVideoReady(false);
+    if (!el || loading || !videoMatchesEpisode || targetMediaTime === null) {
+      drawnFrameRef.current = null;
+      dispatchFrameState({ type: "media_loading" });
       return;
     }
 
-    setVideoError(null);
-    const sameSrc = el.getAttribute("data-src") === video.url;
-    if (!sameSrc) {
-      setVideoReady(false);
-      el.setAttribute("data-src", video.url);
-      el.src = video.url;
-      el.load();
-    }
+    let cancelled = false;
+    const videoUrl = video.url;
 
-    const seekNow = () => {
-      if (el.readyState < HTMLMediaElement.HAVE_METADATA) return;
-      if (Math.abs(el.currentTime - targetMediaTime) <= 1e-4) {
-        setVideoReady(true);
-        setFrameRevision((n) => n + 1);
+    const verifyAndConfirm = (): boolean => {
+      if (cancelled) return false;
+      if (loadedSrcRef.current !== videoUrl) return false;
+      const ready = isMediaAtSelectedFrame({
+        video,
+        mediaEpisodeIndex,
+        selectedTarget,
+        mediaTimeSeconds: el.currentTime,
+        fps,
+        episodeLength,
+        readyState: el.readyState,
+        seeking: el.seeking,
+        videoWidth: el.videoWidth,
+        videoHeight: el.videoHeight,
+      });
+      if (!ready) return false;
+
+      activeSeekTargetRef.current = null;
+      dispatchFrameState({
+        type: "frame_confirmed",
+        frame: {
+          ...selectedTarget,
+          videoUrl,
+          mediaTime: el.currentTime,
+        },
+      });
+      setFrameRevision((n) => n + 1);
+      return true;
+    };
+
+    const syncToTarget = () => {
+      if (cancelled) return;
+      if (el.readyState < HTMLMediaElement.HAVE_METADATA) {
+        dispatchFrameState({ type: "media_loading" });
         return;
       }
-      if (seekerRef.current) {
-        seekerRef.current.request(targetMediaTime, 1e-4);
-      } else {
+
+      if (verifyAndConfirm()) {
+        return;
+      }
+
+      const decodedFrame = decodedFrameIndexFromMediaTime(
+        video,
+        el.currentTime,
+        fps,
+        episodeLength,
+      );
+      if (decodedFrame === selectedTarget.frameIndex) {
+        dispatchFrameState({ type: "media_loading" });
+        return;
+      }
+
+      const alreadySeekingTarget =
+        el.seeking &&
+        activeSeekTargetRef.current !== null &&
+        Math.abs(activeSeekTargetRef.current - targetMediaTime) <= 1e-4;
+      if (!alreadySeekingTarget) {
+        drawnFrameRef.current = null;
+        activeSeekTargetRef.current = targetMediaTime;
+        dispatchFrameState({ type: "seeking" });
         el.currentTime = targetMediaTime;
       }
     };
 
-    const handleLoadedData = () => {
-      seekNow();
-    };
-    const handleSeeked = () => {
-      setVideoReady(true);
-      setFrameRevision((n) => n + 1);
-    };
-    const handleError = () => {
-      setVideoReady(false);
-      setVideoError(t("calib.videoLoadError"));
+    const handleSeeking = () => {
+      if (cancelled) return;
+      drawnFrameRef.current = null;
+      dispatchFrameState({ type: "seeking" });
     };
 
-    el.addEventListener("loadeddata", handleLoadedData);
-    el.addEventListener("seeked", handleSeeked);
+    const handleEmptied = () => {
+      if (cancelled) return;
+      drawnFrameRef.current = null;
+      activeSeekTargetRef.current = null;
+      dispatchFrameState({ type: "media_loading" });
+    };
+
+    const handleError = () => {
+      if (cancelled) return;
+      drawnFrameRef.current = null;
+      activeSeekTargetRef.current = null;
+      dispatchFrameState({
+        type: "error",
+        message: t("calib.videoLoadError"),
+      });
+    };
+
+    el.addEventListener("loadedmetadata", syncToTarget);
+    el.addEventListener("loadeddata", syncToTarget);
+    el.addEventListener("canplay", syncToTarget);
+    el.addEventListener("seeked", syncToTarget);
+    el.addEventListener("seeking", handleSeeking);
+    el.addEventListener("emptied", handleEmptied);
     el.addEventListener("error", handleError);
 
-    if (el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-      seekNow();
+    if (loadedSrcRef.current !== videoUrl) {
+      loadedSrcRef.current = videoUrl;
+      activeSeekTargetRef.current = null;
+      drawnFrameRef.current = null;
+      dispatchFrameState({ type: "media_loading" });
+      el.src = videoUrl;
+      el.load();
+    } else {
+      syncToTarget();
     }
 
     return () => {
-      el.removeEventListener("loadeddata", handleLoadedData);
-      el.removeEventListener("seeked", handleSeeked);
+      cancelled = true;
+      el.removeEventListener("loadedmetadata", syncToTarget);
+      el.removeEventListener("loadeddata", syncToTarget);
+      el.removeEventListener("canplay", syncToTarget);
+      el.removeEventListener("seeked", syncToTarget);
+      el.removeEventListener("seeking", handleSeeking);
+      el.removeEventListener("emptied", handleEmptied);
       el.removeEventListener("error", handleError);
     };
-  }, [t, targetMediaTime, video]);
+  }, [
+    episodeLength,
+    fps,
+    loading,
+    mediaEpisodeIndex,
+    selectedTarget,
+    t,
+    targetMediaTime,
+    video,
+    videoMatchesEpisode,
+  ]);
 
-  // Draw the current video frame and markers onto the main canvas.
+  const combinedError = error ?? frameState.error;
+  const isConfirmedReady =
+    !loading &&
+    combinedError === null &&
+    frameState.status === "ready" &&
+    targetsMatch(frameState.target, selectedTarget) &&
+    targetsMatch(frameState.displayedFrame, selectedTarget);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     const el = videoRef.current;
@@ -198,13 +311,24 @@ export function CalibrationFrameCanvas({
 
     const { sx, sy, sw, sh } = viewportRect();
 
-    if (
-      el &&
-      videoReady &&
-      el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
-      el.videoWidth > 0 &&
-      el.videoHeight > 0
-    ) {
+    const canDrawConfirmedVideo =
+      isConfirmedReady &&
+      el !== null &&
+      videoMatchesEpisode &&
+      isMediaAtSelectedFrame({
+        video,
+        mediaEpisodeIndex,
+        selectedTarget,
+        mediaTimeSeconds: el.currentTime,
+        fps,
+        episodeLength,
+        readyState: el.readyState,
+        seeking: el.seeking,
+        videoWidth: el.videoWidth,
+        videoHeight: el.videoHeight,
+      });
+
+    if (canDrawConfirmedVideo && frameState.displayedFrame) {
       const scaleX = el.videoWidth / imgWidth;
       const scaleY = el.videoHeight / imgHeight;
       ctx.imageSmoothingEnabled = viewZoom === 1;
@@ -219,9 +343,27 @@ export function CalibrationFrameCanvas({
         imgWidth,
         imgHeight,
       );
+      drawnFrameRef.current = frameState.displayedFrame;
+
+      // Stamp the confirmed loaded episode / frame directly onto the canvas.
+      const frameTag = `ep ${frameState.displayedFrame.episodeIndex} / frame ${frameState.displayedFrame.frameIndex}`;
+      ctx.save();
+      ctx.font = "600 12px monospace";
+      const tagW = ctx.measureText(frameTag).width;
+      ctx.fillStyle = "rgba(2, 6, 23, 0.82)";
+      ctx.fillRect(8, 8, tagW + 14, 22);
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.45)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(8.5, 8.5, tagW + 13, 21);
+      ctx.fillStyle = "#e0f2fe";
+      ctx.textBaseline = "middle";
+      ctx.fillText(frameTag, 15, 19.5);
+      ctx.restore();
     } else {
+      drawnFrameRef.current = null;
       ctx.fillStyle = "#0b1120";
       ctx.fillRect(0, 0, imgWidth, imgHeight);
+      return;
     }
 
     const toCanvas = (u: number, v: number): [number, number] => [
@@ -229,7 +371,6 @@ export function CalibrationFrameCanvas({
       ((v - sy) / sh) * imgHeight,
     ];
 
-    // Connecting line between clicked and reprojected points when both exist.
     if (frame.pixel && reprojected) {
       const [cx1, cy1] = toCanvas(frame.pixel[0], frame.pixel[1]);
       const [cx2, cy2] = toCanvas(reprojected.u, reprojected.v);
@@ -244,7 +385,6 @@ export function CalibrationFrameCanvas({
       ctx.restore();
     }
 
-    // Reprojected marker (amber diamond + crosshair).
     if (reprojected) {
       const [rx, ry] = toCanvas(reprojected.u, reprojected.v);
       ctx.save();
@@ -271,7 +411,6 @@ export function CalibrationFrameCanvas({
       ctx.restore();
     }
 
-    // Clicked marker (emerald/cyan ring + precision crosshair).
     if (frame.pixel) {
       const [px, py] = toCanvas(frame.pixel[0], frame.pixel[1]);
       ctx.save();
@@ -310,19 +449,25 @@ export function CalibrationFrameCanvas({
       ctx.restore();
     }
   }, [
+    episodeLength,
+    fps,
     frame.pixel,
     frameRevision,
+    frameState.displayedFrame,
     imgHeight,
     imgWidth,
+    isConfirmedReady,
+    mediaEpisodeIndex,
     reprojected,
-    videoReady,
+    selectedTarget,
+    video,
+    videoMatchesEpisode,
     viewZoom,
     viewportRect,
   ]);
 
-  // Draw the crisp zoomed magnifier loupe around the cursor.
   useEffect(() => {
-    if (!loupeEnabled || !hoverPixel) return;
+    if (!loupeEnabled || !hoverPixel || !isConfirmedReady) return;
     const loupe = loupeCanvasRef.current;
     const el = videoRef.current;
     if (!loupe) return;
@@ -339,10 +484,19 @@ export function CalibrationFrameCanvas({
 
     if (
       el &&
-      videoReady &&
-      el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
-      el.videoWidth > 0 &&
-      el.videoHeight > 0
+      videoMatchesEpisode &&
+      isMediaAtSelectedFrame({
+        video,
+        mediaEpisodeIndex,
+        selectedTarget,
+        mediaTimeSeconds: el.currentTime,
+        fps,
+        episodeLength,
+        readyState: el.readyState,
+        seeking: el.seeking,
+        videoWidth: el.videoWidth,
+        videoHeight: el.videoHeight,
+      })
     ) {
       const scaleX = el.videoWidth / imgWidth;
       const scaleY = el.videoHeight / imgHeight;
@@ -384,7 +538,6 @@ export function CalibrationFrameCanvas({
       ctx.stroke();
     }
 
-    // Center 1-pixel target crosshair.
     ctx.strokeStyle = "rgba(56, 189, 248, 0.9)";
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -401,15 +554,21 @@ export function CalibrationFrameCanvas({
     ctx.strokeStyle = "#38bdf8";
     ctx.strokeRect(mid - loupeMag / 2, mid - loupeMag / 2, loupeMag, loupeMag);
   }, [
+    episodeLength,
+    fps,
     frame.pixel,
     frameRevision,
     hoverPixel,
     imgHeight,
     imgWidth,
+    isConfirmedReady,
     loupeEnabled,
     loupeMag,
+    mediaEpisodeIndex,
     reprojected,
-    videoReady,
+    selectedTarget,
+    video,
+    videoMatchesEpisode,
   ]);
 
   const pointerToImagePixel = (
@@ -457,7 +616,6 @@ export function CalibrationFrameCanvas({
   };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    // Right-drag or Shift+drag pans when zoomed in; plain left-click places pixel.
     if (viewZoom > 1 && (e.button === 2 || e.button === 1 || e.shiftKey)) {
       e.preventDefault();
       dragPanRef.current = {
@@ -470,6 +628,35 @@ export function CalibrationFrameCanvas({
       return;
     }
     if (e.button !== 0) return;
+
+    const el = videoRef.current;
+    const stateAllowsClick = canAcceptCalibrationCanvasClick({
+      selectedTarget,
+      state: frameState,
+      drawnFrame: drawnFrameRef.current,
+      loading,
+      error: combinedError,
+    });
+    const mediaStillMatches =
+      el !== null &&
+      videoMatchesEpisode &&
+      isMediaAtSelectedFrame({
+        video,
+        mediaEpisodeIndex,
+        selectedTarget,
+        mediaTimeSeconds: el.currentTime,
+        fps,
+        episodeLength,
+        readyState: el.readyState,
+        seeking: el.seeking,
+        videoWidth: el.videoWidth,
+        videoHeight: el.videoHeight,
+      });
+
+    if (!stateAllowsClick || !mediaStillMatches) {
+      return;
+    }
+
     const coords = pointerToImagePixel(e);
     if (!coords) return;
     const rounded: CalibrationPixel = [
@@ -502,17 +689,10 @@ export function CalibrationFrameCanvas({
     ? hoverPixel.relY > (canvasRef.current?.clientHeight ?? 480) * 0.62
     : false;
 
+  const isLoadingFrame = !isConfirmedReady && combinedError === null;
+
   return (
     <div className="flex flex-col gap-2">
-      {/* Hidden source video retained across seeks on the same MP4 shard */}
-      <video
-        ref={videoRef}
-        muted
-        playsInline
-        preload="auto"
-        className="hidden"
-      />
-
       {/* Zoom & magnifier toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-300">
         <div className="flex items-center gap-1.5">
@@ -571,8 +751,29 @@ export function CalibrationFrameCanvas({
 
       {/* Main interactive image canvas */}
       <div className="relative overflow-hidden rounded-lg border border-white/10 bg-slate-950 select-none">
+        {/* Keep video rendered (not display:none) so browsers never defer decoding */}
+        <video
+          ref={videoRef}
+          muted
+          playsInline
+          preload="auto"
+          aria-hidden="true"
+          className="pointer-events-none absolute top-0 left-0 h-px w-px opacity-0"
+        />
+
         <canvas
           ref={canvasRef}
+          data-frame-ready={isConfirmedReady ? "true" : "false"}
+          data-loaded-episode={
+            frameState.displayedFrame
+              ? String(frameState.displayedFrame.episodeIndex)
+              : ""
+          }
+          data-loaded-frame={
+            frameState.displayedFrame
+              ? String(frameState.displayedFrame.frameIndex)
+              : ""
+          }
           onMouseMove={handleMouseMove}
           onMouseDown={handleMouseDown}
           onMouseUp={handleMouseUp}
@@ -584,36 +785,40 @@ export function CalibrationFrameCanvas({
             if (viewZoom > 1) e.preventDefault();
           }}
           style={{ aspectRatio: `${imgWidth} / ${imgHeight}` }}
-          className="block w-full cursor-crosshair"
+          className={`block w-full ${
+            isConfirmedReady ? "cursor-crosshair" : "cursor-wait"
+          }`}
         />
 
-        {(loading || (!videoReady && !error && !videoError)) && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-950/60 text-xs text-slate-300">
-            {t("calib.loadingFrame")}
+        {isLoadingFrame && (
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-slate-950/75 text-xs text-slate-200">
+            <span>{t("calib.loadingFrame")}</span>
+            <span className="font-mono text-[11px] text-cyan-300/90">
+              ep {selectedTarget.episodeIndex} / frame{" "}
+              {selectedTarget.frameIndex}
+            </span>
           </div>
         )}
 
-        {(error || videoError) && (
+        {combinedError && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-950/80 p-4 text-center text-xs text-rose-300">
-            {error ?? videoError}
+            {combinedError}
           </div>
         )}
 
-        {frame.skipped && !frame.pixel && (
-          <div className="pointer-events-none absolute top-3 left-3 rounded bg-slate-900/85 px-2.5 py-1 text-xs font-medium text-amber-300 border border-amber-400/30">
+        {frame.skipped && !frame.pixel && isConfirmedReady && (
+          <div className="pointer-events-none absolute top-3 right-3 rounded border border-amber-400/30 bg-slate-900/85 px-2.5 py-1 text-xs font-medium text-amber-300">
             {t("calib.statusSkipped")}
           </div>
         )}
 
-        {/* Cursor coordinate readout */}
-        {hoverPixel && (
+        {hoverPixel && isConfirmedReady && (
           <div className="pointer-events-none absolute bottom-2 left-2 rounded bg-black/75 px-2 py-0.5 font-mono text-[11px] text-cyan-200 tabular">
             u={hoverPixel.u.toFixed(1)}, v={hoverPixel.v.toFixed(1)}
           </div>
         )}
 
-        {/* Floating pixel-accurate magnifier loupe */}
-        {loupeEnabled && hoverPixel && videoReady && (
+        {loupeEnabled && hoverPixel && isConfirmedReady && (
           <div
             className="pointer-events-none absolute z-20 overflow-hidden rounded-lg border border-cyan-400/70 bg-slate-950 shadow-xl"
             style={{

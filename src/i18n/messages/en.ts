@@ -1007,6 +1007,8 @@ export const en = {
   "calib.resultsTitle": "Calibration results (head.json)",
   "calib.openOverlay": "Verify overlay",
   "calib.residualsTitle": "Per-point residuals (click to inspect reprojection)",
+  "calib.reviewBadge": "Review",
+  "calib.reviewThreshold": "flag > {px} px",
   "calib.distortionWarning":
     "Non-zero camera distortion detected: the reprojection overlay uses a pinhole model and ignores distortion.",
   "calib.mergeIdentityMismatch":
