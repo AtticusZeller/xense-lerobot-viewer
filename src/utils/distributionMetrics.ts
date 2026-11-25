@@ -146,7 +146,7 @@ export function recomputeSubtaskArmMetrics(
   xyBinM: number,
 ): DistributionSubtaskArmMetrics {
   const startPoses = episodes.map((ep) => ep.start_pose);
-  const endPoses = episodes.map((ep) => ep.end_pose);
+  const endPoses = episodes.flatMap((ep) => (ep.end_pose ? [ep.end_pose] : []));
 
   return {
     episode_count: episodes.length,

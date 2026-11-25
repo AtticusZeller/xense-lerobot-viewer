@@ -55,10 +55,14 @@ export default function DistributionTrajectory3D({
         episode.start_pose.x_m,
         episode.start_pose.y_m,
         episode.start_pose.z_m,
-        episode.end_pose.x_m,
-        episode.end_pose.y_m,
-        episode.end_pose.z_m,
       ];
+      if (episode.end_pose) {
+        flat.push(
+          episode.end_pose.x_m,
+          episode.end_pose.y_m,
+          episode.end_pose.z_m,
+        );
+      }
       if (showTrajectories) {
         for (const pt of episode.trajectory) {
           flat.push(pt.x_m, pt.y_m, pt.z_m);
@@ -109,11 +113,10 @@ export default function DistributionTrajectory3D({
             episode.start_pose.y_m,
             episode.start_pose.z_m,
           );
-          const endScene = toScenePoint(
-            episode.end_pose.x_m,
-            episode.end_pose.y_m,
-            episode.end_pose.z_m,
-          );
+          const endPose = episode.end_pose;
+          const endScene = endPose
+            ? toScenePoint(endPose.x_m, endPose.y_m, endPose.z_m)
+            : null;
           const startArrowEnd = yawArrowEndScene(
             episode.start_pose.x_m,
             episode.start_pose.y_m,
@@ -121,13 +124,15 @@ export default function DistributionTrajectory3D({
             episode.start_pose.yaw_deg,
             arrowLen,
           );
-          const endArrowEnd = yawArrowEndScene(
-            episode.end_pose.x_m,
-            episode.end_pose.y_m,
-            episode.end_pose.z_m,
-            episode.end_pose.yaw_deg,
-            arrowLen,
-          );
+          const endArrowEnd = endPose
+            ? yawArrowEndScene(
+                endPose.x_m,
+                endPose.y_m,
+                endPose.z_m,
+                endPose.yaw_deg,
+                arrowLen,
+              )
+            : null;
 
           const trajPoints = showTrajectories
             ? episode.trajectory.map(
@@ -153,26 +158,30 @@ export default function DistributionTrajectory3D({
                 lineWidth={1.8}
               />
 
-              {/* End marker (box) + yaw arrow */}
-              <mesh position={endScene}>
-                <boxGeometry
-                  args={[
-                    markerRadius * 1.8,
-                    markerRadius * 1.8,
-                    markerRadius * 1.8,
-                  ]}
-                />
-                <meshStandardMaterial
-                  color={color}
-                  emissive={color}
-                  emissiveIntensity={0.35}
-                />
-              </mesh>
-              <Line
-                points={[endScene, endArrowEnd]}
-                color="#f8fafc"
-                lineWidth={1.6}
-              />
+              {/* End marker (box) + yaw arrow; absent for the last subtask */}
+              {endScene && endArrowEnd && (
+                <>
+                  <mesh position={endScene}>
+                    <boxGeometry
+                      args={[
+                        markerRadius * 1.8,
+                        markerRadius * 1.8,
+                        markerRadius * 1.8,
+                      ]}
+                    />
+                    <meshStandardMaterial
+                      color={color}
+                      emissive={color}
+                      emissiveIntensity={0.35}
+                    />
+                  </mesh>
+                  <Line
+                    points={[endScene, endArrowEnd]}
+                    color="#f8fafc"
+                    lineWidth={1.6}
+                  />
+                </>
+              )}
 
               {/* Optional full trajectory + periodic yaw ticks */}
               {showTrajectories && trajPoints.length >= 2 && (

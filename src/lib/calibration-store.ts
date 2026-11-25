@@ -370,8 +370,13 @@ async function readEpisodeArmsTcp(
     stat.size,
     stat.mtimeMs,
   );
+  // `dataset_from_index` is a dataset-global row index, but a v3 data file
+  // holds only a slice of the dataset; its first `index` value is the offset.
+  const firstRow = await readParquetRowsRaw(handle, 0, 1, ["index"]);
+  const fileStartIndex = toFiniteNumber(firstRow[0]?.["index"], 0);
+  const localFrom = Math.max(0, fromIndex - fileStartIndex);
   const rowCount = Math.max(0, toIndex - fromIndex);
-  const rows = await readParquetRowsRaw(handle, fromIndex, rowCount, [
+  const rows = await readParquetRowsRaw(handle, localFrom, rowCount, [
     "observation.state",
   ]);
 

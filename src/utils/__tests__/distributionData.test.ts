@@ -78,4 +78,31 @@ describe("distributionData", () => {
     expect(parseEpisodeSelection("0-20", 20).error).not.toBeNull();
     expect(parseEpisodeSelection("0:21", 20).error).not.toBeNull();
   });
+
+  it("keeps the last subtask's null end and validates start_source", () => {
+    const raw = fs.readFileSync(FIXTURE_PATH, "utf-8");
+    const parsed = parseDistributionJson(raw);
+    const last = parsed.subtasks[parsed.subtasks.length - 1];
+    for (const arm of last.participating_arms) {
+      for (const ep of last.arms[arm].episodes) {
+        expect(ep.end_frame).toBeNull();
+        expect(ep.end_pose).toBeNull();
+        expect(ep.start_source).toBe("start");
+      }
+    }
+    expect(parsed.subtasks[0].arms.right.episodes[0].start_source).toBe(
+      "grasp",
+    );
+
+    const bad = JSON.parse(raw);
+    bad.subtasks[0].arms.right.episodes[0].start_source = "release";
+    expect(() => parseDistributionJson(JSON.stringify(bad))).toThrow(
+      /start_source/,
+    );
+    const negative = JSON.parse(raw);
+    negative.subtasks[0].arms.right.episodes[0].end_frame = -1;
+    expect(() => parseDistributionJson(JSON.stringify(negative))).toThrow(
+      /end_frame/,
+    );
+  });
 });

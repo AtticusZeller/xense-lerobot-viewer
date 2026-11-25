@@ -100,7 +100,7 @@ export function DistributionSubtaskTrajectoryCard({
       color: g.color,
       yawsDeg: filteredEpisodes
         .filter((e) => g.episodes.has(e.episode_index))
-        .map((e) => e.end_pose.yaw_deg),
+        .flatMap((e) => (e.end_pose ? [e.end_pose.yaw_deg] : [])),
     }));
     return { startYawSeries: startSeries, endYawSeries: endSeries };
   }, [filteredEpisodes, groups]);
@@ -121,7 +121,7 @@ export function DistributionSubtaskTrajectoryCard({
 
     for (const ep of filteredEpisodes) {
       includePoint(ep.start_pose.x_m, ep.start_pose.y_m);
-      includePoint(ep.end_pose.x_m, ep.end_pose.y_m);
+      if (ep.end_pose) includePoint(ep.end_pose.x_m, ep.end_pose.y_m);
       if (showTrajectories) {
         for (const pt of ep.trajectory) includePoint(pt.x_m, pt.y_m);
       }
@@ -350,9 +350,10 @@ export function DistributionSubtaskTrajectoryCard({
                 const stx = sx + plot.arrowPx * Math.cos(sRad);
                 const sty = sy - plot.arrowPx * Math.sin(sRad);
 
-                const ex = plot.toSvgX(episode.end_pose.x_m);
-                const ey = plot.toSvgY(episode.end_pose.y_m);
-                const eRad = (episode.end_pose.yaw_deg * Math.PI) / 180;
+                const endPose = episode.end_pose;
+                const ex = endPose ? plot.toSvgX(endPose.x_m) : 0;
+                const ey = endPose ? plot.toSvgY(endPose.y_m) : 0;
+                const eRad = endPose ? (endPose.yaw_deg * Math.PI) / 180 : 0;
                 const etx = ex + plot.arrowPx * Math.cos(eRad);
                 const ety = ey - plot.arrowPx * Math.sin(eRad);
 
@@ -378,26 +379,30 @@ export function DistributionSubtaskTrajectoryCard({
                       <title>{`${groupName} ep ${episode.episode_index} start (${episode.start_pose.x_m.toFixed(3)}, ${episode.start_pose.y_m.toFixed(3)}) yaw ${episode.start_pose.yaw_deg.toFixed(1)}°`}</title>
                     </circle>
 
-                    {/* End arrow & square */}
-                    <line
-                      x1={ex}
-                      y1={ey}
-                      x2={etx}
-                      y2={ety}
-                      stroke="#f8fafc"
-                      strokeWidth={1.4}
-                    />
-                    <rect
-                      x={ex - 3.5}
-                      y={ey - 3.5}
-                      width={7}
-                      height={7}
-                      fill={color}
-                      stroke="#f8fafc"
-                      strokeWidth={1.1}
-                    >
-                      <title>{`${groupName} ep ${episode.episode_index} end (${episode.end_pose.x_m.toFixed(3)}, ${episode.end_pose.y_m.toFixed(3)}) yaw ${episode.end_pose.yaw_deg.toFixed(1)}°`}</title>
-                    </rect>
+                    {/* End arrow & square (absent for the last subtask) */}
+                    {endPose && (
+                      <>
+                        <line
+                          x1={ex}
+                          y1={ey}
+                          x2={etx}
+                          y2={ety}
+                          stroke="#f8fafc"
+                          strokeWidth={1.4}
+                        />
+                        <rect
+                          x={ex - 3.5}
+                          y={ey - 3.5}
+                          width={7}
+                          height={7}
+                          fill={color}
+                          stroke="#f8fafc"
+                          strokeWidth={1.1}
+                        >
+                          <title>{`${groupName} ep ${episode.episode_index} end (${endPose.x_m.toFixed(3)}, ${endPose.y_m.toFixed(3)}) yaw ${endPose.yaw_deg.toFixed(1)}°`}</title>
+                        </rect>
+                      </>
+                    )}
                   </g>
                 );
               })}

@@ -431,6 +431,15 @@ function parseObjects(raw: unknown): DistributionObjectEntry[] {
   });
 }
 
+function parseStartSource(
+  raw: unknown,
+  label: string,
+): { start_source?: "grasp" | "start" } {
+  if (raw === undefined) return {};
+  if (raw === "grasp" || raw === "start") return { start_source: raw };
+  throw new Error(`Invalid ${label}: expected "grasp" or "start"`);
+}
+
 function parsePose(raw: unknown, label: string): DistributionPose {
   if (!isPlainObject(raw)) {
     throw new Error(`Invalid ${label}: expected object`);
@@ -564,12 +573,16 @@ function parseSubtasks(raw: unknown): DistributionSubtaskEntry[] {
               ep.start_frame,
               `${epLabel}.start_frame`,
             ),
-            end_frame: assertNonNegativeInt(
-              ep.end_frame,
-              `${epLabel}.end_frame`,
-            ),
+            ...parseStartSource(ep.start_source, `${epLabel}.start_source`),
+            end_frame:
+              ep.end_frame === null
+                ? null
+                : assertNonNegativeInt(ep.end_frame, `${epLabel}.end_frame`),
             start_pose: parsePose(ep.start_pose, `${epLabel}.start_pose`),
-            end_pose: parsePose(ep.end_pose, `${epLabel}.end_pose`),
+            end_pose:
+              ep.end_pose === null
+                ? null
+                : parsePose(ep.end_pose, `${epLabel}.end_pose`),
             trajectory,
           };
         },

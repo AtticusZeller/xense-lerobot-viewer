@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
+  loadCalibrationEpisodeMedia,
   loadCalibrationState,
   resolveCalibrationArtifactPaths,
   saveCalibrationPoints,
@@ -306,5 +307,25 @@ describe("calibration-store", () => {
     });
     expect(unconfigured.configured).toBe(false);
     expect(unconfigured.displayCommand).toContain("lerobot-check calibrate");
+  });
+
+  it("reads episode TCP from a v3 data file that does not start at global index 0", async () => {
+    const datasetDir = path.join(
+      import.meta.dir,
+      "fixtures",
+      "v3-two-data-files",
+    );
+    const media = await loadCalibrationEpisodeMedia(datasetDir, "enc", 1, {
+      includeTcp: true,
+    });
+    expect(media?.episodeLength).toBe(3);
+    const left = media?.armsTcp?.left ?? [];
+    expect(left).toHaveLength(3);
+    expect(left.map((pose) => pose?.[0])).toEqual([10, 11, 12]);
+
+    const first = await loadCalibrationEpisodeMedia(datasetDir, "enc", 0, {
+      includeTcp: true,
+    });
+    expect(first?.armsTcp?.left.map((pose) => pose?.[0])).toEqual([0, 1, 2]);
   });
 });

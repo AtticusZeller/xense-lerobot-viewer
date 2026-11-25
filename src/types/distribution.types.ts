@@ -154,9 +154,12 @@ export interface DistributionSubtaskArmMetrics {
 export interface DistributionSubtaskArmEpisode {
   episode_index: number;
   start_frame: number;
-  end_frame: number;
+  /** `grasp` when `start_pose` is the grasp frame, `start` when it fell back to the row start. */
+  start_source?: "grasp" | "start";
+  /** `null` for the last subtask in task-spec order (it runs to episode end). */
+  end_frame: number | null;
   start_pose: DistributionPose;
-  end_pose: DistributionPose;
+  end_pose: DistributionPose | null;
   trajectory: DistributionTrajectoryPoint[];
 }
 

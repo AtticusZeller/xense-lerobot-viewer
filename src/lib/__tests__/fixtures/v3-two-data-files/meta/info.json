@@ -1,0 +1,27 @@
+{
+  "codebase_version": "v3.0",
+  "fps": 30,
+  "total_episodes": 2,
+  "total_frames": 6,
+  "features": {
+    "observation.state": {
+      "dtype": "float32",
+      "shape": [9],
+      "names": [
+        "left_tcp.x",
+        "left_tcp.y",
+        "left_tcp.z",
+        "left_tcp.r1",
+        "left_tcp.r2",
+        "left_tcp.r3",
+        "left_tcp.r4",
+        "left_tcp.r5",
+        "left_tcp.r6"
+      ]
+    },
+    "observation.images.head": {
+      "dtype": "video",
+      "shape": [480, 640, 3]
+    }
+  }
+}
