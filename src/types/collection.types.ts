@@ -62,6 +62,29 @@ export interface SuggestionsFile {
   test_points: SuggestionPointItem[];
 }
 
+export type CollectionTargetKind = "placement" | "test_point";
+
+export interface CollectionMaskTarget extends Pick<
+  SuggestionPointItem,
+  "object" | "tier" | "index" | "pixel" | "arrow_end_pixel"
+> {
+  kind: CollectionTargetKind;
+  outline: TargetPolygonVertex[] | null;
+  reason: string | null;
+}
+
+export interface CollectionMaskBundle {
+  version: 1;
+  repo_id: string;
+  revision: string;
+  camera: string;
+  image_size: [number, number];
+  calibration_sha256: string;
+  suggestions_sha256: string;
+  sources: Record<string, unknown>;
+  targets: CollectionMaskTarget[];
+}
+
 export interface CollectionArtifactPathSummary {
   targetsPath: string;
   suggestionsPath: string;
@@ -81,6 +104,8 @@ export interface CollectionStatePayload {
   suggestionsExists: boolean;
   suggestions: SuggestionsFile | null;
   suggestionsError: string | null;
+  masks: CollectionMaskBundle | null;
+  masksError: "invalid" | "stale" | "imageMismatch" | null;
   calibration: {
     exists: boolean;
     hasNonZeroDistortion: boolean;

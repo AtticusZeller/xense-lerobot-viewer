@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -9,6 +10,7 @@ import {
   saveTargetPolygon,
 } from "../collection-store";
 import { buildSuggestCommand } from "../lerobot-check-runner";
+import suggestions from "@/utils/__tests__/fixtures/suggestions.example.json";
 
 const tempDirs: string[] = [];
 
@@ -79,6 +81,115 @@ describe("collection-store", () => {
     });
     expect(afterDelete.targetsExists).toBe(false);
     expect(afterDelete.targets).toBeNull();
+  });
+
+  it("serves only a complete mask bundle for the exact calibration and suggestions", async () => {
+    const root = await makeTempDir();
+    const datasetDir = path.join(root, "Synthetic", "demo");
+    await fs.mkdir(datasetDir, { recursive: true });
+    const options = { localDatasetRoot: root, env: {} };
+    const paths = await resolveCollectionArtifactPaths(datasetDir, options);
+    const camera = "observation.images.head";
+    const image_size = [640, 480];
+    const head = JSON.stringify({
+      version: 1,
+      repo_id: paths.repoId,
+      revision: paths.revision,
+      camera,
+      image_size,
+      intrinsics: {
+        version: 1,
+        camera,
+        image_size,
+        fx: 600,
+        fy: 600,
+        cx: 320,
+        cy: 240,
+        distortion: [0, 0, 0, 0, 0],
+      },
+      arms: {},
+    });
+    const suggestionText = JSON.stringify({
+      ...suggestions,
+      provenance: {
+        ...suggestions.provenance,
+        repo_id: paths.repoId,
+        revision: paths.revision,
+      },
+    });
+    for (const [file, content] of [
+      [paths.headPath, head],
+      [paths.suggestionsPath, suggestionText],
+    ]) {
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.writeFile(file, content);
+    }
+    const digest = (text: string) =>
+      createHash("sha256").update(text).digest("hex");
+    const targets = [
+      ...suggestions.placements.map((item) => ({ ...item, kind: "placement" })),
+      ...suggestions.test_points.map((item) => ({
+        ...item,
+        kind: "test_point",
+      })),
+    ].map(({ kind, object, index, tier, pixel, arrow_end_pixel }, i) => ({
+      kind,
+      object,
+      index,
+      tier,
+      pixel,
+      arrow_end_pixel,
+      outline:
+        i === 0
+          ? [
+              [311, 200],
+              [330, 207],
+              [316, 219],
+            ]
+          : null,
+      reason: i === 0 ? null : "No reviewed outline",
+    }));
+    const bundle = {
+      version: 1,
+      repo_id: paths.repoId,
+      revision: paths.revision,
+      camera,
+      image_size,
+      calibration_sha256: digest(head),
+      suggestions_sha256: digest(suggestionText),
+      sources: {},
+      targets,
+    };
+    expect(
+      (await loadCollectionState(datasetDir, options)).masksError,
+    ).toBeNull();
+    await fs.mkdir(path.dirname(paths.masksPath), { recursive: true });
+    await fs.writeFile(paths.masksPath, JSON.stringify(bundle));
+    expect((await loadCollectionState(datasetDir, options)).masks).toEqual(
+      bundle,
+    );
+    await fs.writeFile(
+      paths.masksPath,
+      JSON.stringify({ ...bundle, image_size: [660, 480] }),
+    );
+    expect((await loadCollectionState(datasetDir, options)).masksError).toBe(
+      "imageMismatch",
+    );
+    await fs.writeFile(
+      paths.masksPath,
+      JSON.stringify({ ...bundle, targets: targets.slice(1) }),
+    );
+    expect((await loadCollectionState(datasetDir, options)).masksError).toBe(
+      "invalid",
+    );
+    await fs.writeFile(paths.masksPath, JSON.stringify(bundle));
+    await fs.appendFile(paths.suggestionsPath, "\n");
+    const stale = await loadCollectionState(datasetDir, options);
+    expect(stale.masks).toBeNull();
+    expect(stale.masksError).toBe("stale");
+    expect(stale.suggestions?.placements).toHaveLength(
+      suggestions.placements.length,
+    );
   });
 
   it("builds suggest CLI invocation with -n, --test-per-tier, and optional --seed", () => {

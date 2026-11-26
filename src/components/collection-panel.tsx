@@ -22,7 +22,10 @@ import type {
 } from "@/types/collection.types";
 import type { DistributionRecomputeResult } from "@/types/distribution.types";
 import { copyTextToClipboard } from "@/utils/clipboard";
-import { formatSuggestionsCsv } from "@/utils/collectionData";
+import {
+  collectionTargetKey,
+  formatSuggestionsCsv,
+} from "@/utils/collectionData";
 
 interface CollectionPanelProps {
   encodedPath: string | null;
@@ -106,6 +109,7 @@ export default function CollectionPanel({
     empty: true,
   });
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
   const fetchState = useCallback(async () => {
     if (!encodedPath) {
@@ -223,10 +227,10 @@ export default function CollectionPanel({
     const entries: CollectionMarkerEntry[] = [];
 
     if (showPlacements) {
-      suggestions.placements.forEach((item, idx) => {
+      suggestions.placements.forEach((item) => {
         if (visibleObjects[item.object] === false) return;
         entries.push({
-          key: `p-${item.object}-${item.index}-${idx}`,
+          key: collectionTargetKey("placement", item),
           kind: "placement",
           item,
           color: objectColorMap.get(item.object) ?? OBJECT_COLORS[0],
@@ -235,11 +239,11 @@ export default function CollectionPanel({
       });
     }
 
-    suggestions.test_points.forEach((item, idx) => {
+    suggestions.test_points.forEach((item) => {
       if (visibleObjects[item.object] === false) return;
       if (visibleTiers[item.tier] === false) return;
       entries.push({
-        key: `t-${item.object}-${item.tier}-${item.index}-${idx}`,
+        key: collectionTargetKey("test_point", item),
         kind: "test_point",
         item,
         color: objectColorMap.get(item.object) ?? OBJECT_COLORS[0],
@@ -450,6 +454,26 @@ export default function CollectionPanel({
     }
   };
 
+  const selected = visibleMarkers.find((entry) => entry.key === selectedKey);
+  const selectedMask =
+    selected &&
+    state?.masks?.targets.find(
+      (target) => collectionTargetKey(target.kind, target) === selected.key,
+    );
+
+  const handleExportMasks = () => {
+    if (!state?.masks) return;
+    const blob = new Blob([JSON.stringify(state.masks)], {
+      type: "application/json",
+    });
+    const slug = state.repoId.replace(/\//g, "__");
+    triggerDownload(
+      `${slug}@${state.revision}.json`,
+      URL.createObjectURL(blob),
+      true,
+    );
+  };
+
   const handleExportPng = () => {
     if (!state || !canvasRef.current) return;
     const dataUrl = canvasRef.current.exportAnnotatedPngDataUrl({
@@ -588,6 +612,16 @@ export default function CollectionPanel({
           >
             {t("collect.exportCsv")}
           </button>
+
+          {state.masks && (
+            <button
+              type="button"
+              onClick={handleExportMasks}
+              className="rounded-md border border-white/10 bg-[var(--surface-1)]/60 px-2.5 py-1.5 text-slate-200 hover:border-cyan-400/40"
+            >
+              {t("collect.exportMasks")}
+            </button>
+          )}
 
           <button
             type="button"
@@ -786,9 +820,26 @@ export default function CollectionPanel({
             editPolygon={editPolygon}
             onPolygonChange={handlePolygonChange}
             markers={visibleMarkers}
-            highlightedKey={highlightedKey}
+            highlightedKey={highlightedKey ?? selected?.key ?? null}
+            selectedOutline={selectedMask?.outline ?? null}
             onHoverMarker={setHighlightedKey}
           />
+          <p role="status" className="text-[11px] text-slate-300">
+            {state.masksError
+              ? t(`collect.masks.${state.masksError}`)
+              : !state.masks
+                ? t("collect.masks.missing")
+                : !selected
+                  ? t("collect.masks.select")
+                  : selectedMask?.reason
+                    ? t("collect.masks.unavailable", {
+                        target: `${selected.item.object} ${selected.code}`,
+                        reason: selectedMask.reason,
+                      })
+                    : t("collect.masks.active", {
+                        target: `${selected.item.object} ${selected.code}`,
+                      })}
+          </p>
 
           {/* Layer & Object toggles */}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/10 pt-2.5 text-[11px]">
@@ -903,10 +954,12 @@ export default function CollectionPanel({
                   </thead>
                   <tbody>
                     {visibleMarkers.map((entry) => {
-                      const active = entry.key === highlightedKey;
+                      const active =
+                        entry.key === (highlightedKey ?? selectedKey);
                       return (
                         <tr
                           key={entry.key}
+                          onClick={() => setSelectedKey(entry.key)}
                           onMouseEnter={() => setHighlightedKey(entry.key)}
                           onMouseLeave={() => setHighlightedKey(null)}
                           className={`border-b border-white/5 cursor-pointer transition-colors ${
@@ -914,12 +967,19 @@ export default function CollectionPanel({
                           }`}
                         >
                           <td className="py-1 pr-1.5 font-semibold">
-                            <span
+                            <button
+                              type="button"
+                              aria-pressed={selectedKey === entry.key}
+                              aria-label={`${entry.item.object} ${entry.code}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setSelectedKey(entry.key);
+                              }}
                               className="inline-block rounded px-1 py-0.5 text-[10px] text-slate-950"
                               style={{ backgroundColor: entry.color }}
                             >
                               {entry.code}
-                            </span>
+                            </button>
                           </td>
                           <td className="py-1 px-1.5 text-slate-200 truncate max-w-[6.5rem]">
                             {entry.item.object}
