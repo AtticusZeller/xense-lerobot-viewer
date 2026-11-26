@@ -1,5 +1,9 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { pythonSpawnEnv } from "@/lib/python-runtime";
+import type {
+  CollectionPlanAction,
+  CollectionPlanSnapshot,
+} from "@/types/collection.types";
 
 const RUN_TIMEOUT_MS = 120_000;
 const MAX_OUTPUT_CHARS = 32_000;
@@ -8,7 +12,8 @@ export type CalibrationCliAction = "calib-frames" | "calibrate";
 export type LerobotCheckCliAction =
   | CalibrationCliAction
   | "distribution"
-  | "suggest";
+  | "suggest"
+  | "collection-plan";
 
 export interface CalibrationCliInvocation {
   configured: boolean;
@@ -30,11 +35,9 @@ export interface CliExecResult {
 
 /** Per-dataset+scope lock so overlapping runs cannot race on `.xense-viewer/` files. */
 const activeRuns = new Map<string, { action: string; startedAt: number }>();
+type CliScope = "calib" | "distribution" | "suggest" | "collection-plan";
 
-function runLockKey(
-  datasetDir: string,
-  scope: "calib" | "distribution" | "suggest",
-): string {
+function runLockKey(datasetDir: string, scope: CliScope): string {
   return `${datasetDir}::${scope}`;
 }
 
@@ -120,6 +123,13 @@ export function buildCalibrationCliInvocation(
     }
   }
 
+  return cliInvocation(subcommandArgs, projectDir);
+}
+
+function cliInvocation(
+  subcommandArgs: string[],
+  projectDir: string | null,
+): CalibrationCliInvocation {
   if (projectDir) {
     const args = [
       "run",
@@ -263,8 +273,8 @@ export function getActiveSuggestRun(
 }
 
 async function runLerobotCheckCli(
-  action: LerobotCheckCliAction,
-  scope: "calib" | "distribution" | "suggest",
+  action: Exclude<LerobotCheckCliAction, "collection-plan">,
+  scope: CliScope,
   options: {
     datasetDir: string;
     repoId: string;
@@ -277,7 +287,24 @@ async function runLerobotCheckCli(
     env?: Record<string, string | undefined>;
   },
 ): Promise<CliExecResult> {
-  const invocation = buildCalibrationCliInvocation(action, options);
+  return executeCli(
+    action,
+    scope,
+    options,
+    buildCalibrationCliInvocation(action, options),
+  );
+}
+
+async function executeCli(
+  action: LerobotCheckCliAction,
+  scope: CliScope,
+  options: {
+    datasetDir: string;
+    timeoutMs?: number;
+    env?: Record<string, string | undefined>;
+  },
+  invocation: CalibrationCliInvocation,
+): Promise<CliExecResult> {
   if (!invocation.configured) {
     return {
       ok: false,
@@ -413,6 +440,71 @@ export function runDistributionCli(options: {
   env?: Record<string, string | undefined>;
 }): Promise<CliExecResult> {
   return runLerobotCheckCli("distribution", "distribution", options);
+}
+
+export function buildCollectionPlanInvocation(options: {
+  datasetDir: string;
+  repoId: string;
+  viewerRoot: string;
+  planPath: string;
+  edit: CollectionPlanAction;
+  snapshot: CollectionPlanSnapshot | null;
+  env?: Record<string, string | undefined>;
+}): CalibrationCliInvocation {
+  const { datasetDir, repoId, viewerRoot, planPath, edit, snapshot, env } =
+    options;
+  const args = ["collection-plan"];
+  if (edit.action === "delete") {
+    args.push(
+      "delete-round",
+      "--plan",
+      planPath,
+      "--round-id",
+      String(edit.roundId),
+    );
+  } else {
+    args.push(
+      "generate",
+      "--dataset-root",
+      datasetDir,
+      "--repo-id",
+      repoId,
+      "--viewer-root",
+      viewerRoot,
+      "--plan",
+      planPath,
+    );
+    if (edit.action === "generate") {
+      args.push(
+        "--rounds",
+        String(edit.roundCount),
+        "--objects-per-round",
+        String(edit.objectsPerRound),
+      );
+      if (!snapshot) args.push("--expect-missing");
+    } else {
+      args.push("--replace-round", String(edit.roundId));
+    }
+  }
+  if (snapshot)
+    args.push(
+      "--expect-plan-id",
+      snapshot.plan_id,
+      "--expect-generation",
+      String(snapshot.generation),
+    );
+  return cliInvocation(args, resolveLerobotCheckDir(env));
+}
+
+export function runCollectionPlanCli(
+  options: Parameters<typeof buildCollectionPlanInvocation>[0],
+): Promise<CliExecResult> {
+  return executeCli(
+    "collection-plan",
+    "collection-plan",
+    options,
+    buildCollectionPlanInvocation(options),
+  );
 }
 
 export function runSuggestCli(options: {

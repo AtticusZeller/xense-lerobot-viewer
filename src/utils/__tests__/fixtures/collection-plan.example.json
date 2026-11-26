@@ -1,0 +1,78 @@
+{
+  "format": "lerobot-collection-plan",
+  "version": 1,
+  "plan_id": "11111111-2222-4333-8444-555555555555",
+  "generation": 1,
+  "next_round_id": 3,
+  "repo_id": "org/demo",
+  "revision": "local",
+  "source_episode_count": 100,
+  "camera": "observation.images.head",
+  "image_size": [640, 480],
+  "camera_serial": "0000123",
+  "calibration_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "mask_bundle_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "settings": {
+    "round_count": 2,
+    "objects_per_round": 1,
+    "seed": 0,
+    "min_revisit_distance_m": 0.025,
+    "region_source": "target_polygon"
+  },
+  "excluded_objects": {},
+  "rounds": [
+    {
+      "id": 1,
+      "mask_bundle_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "status": "pending",
+      "episode_index": null,
+      "targets": [
+        {
+          "kind": "placement",
+          "object": "lid",
+          "index": 3,
+          "arm": "left",
+          "x_m": 0.23,
+          "y_m": 0.14,
+          "z_m": -0.12,
+          "yaw_deg": 65,
+          "yaw_symmetry_deg": 180,
+          "outline_plane_z_m": -0.11,
+          "pixel": [125, 140],
+          "arrow_end_pixel": [155, 140],
+          "outline": [
+            [107, 135],
+            [155, 135],
+            [156, 170],
+            [108, 170]
+          ],
+          "reason": null
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "mask_bundle_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "status": "pending",
+      "episode_index": null,
+      "targets": [
+        {
+          "kind": "placement",
+          "object": "box_base",
+          "index": 4,
+          "arm": "left",
+          "x_m": 0.6,
+          "y_m": 0.1,
+          "z_m": -0.12,
+          "yaw_deg": 68,
+          "yaw_symmetry_deg": 180,
+          "outline_plane_z_m": null,
+          "pixel": [300, 320],
+          "arrow_end_pixel": [325, 300],
+          "outline": null,
+          "reason": "No reliable pose proxy"
+        }
+      ]
+    }
+  ]
+}

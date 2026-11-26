@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import fs from "node:fs";
 import path from "node:path";
 import type { TargetPolygonFile } from "@/types/collection.types";
+import planExample from "./fixtures/collection-plan.example.json";
 import {
   appendPolygonVertex,
   deletePolygonVertex,
@@ -10,6 +11,7 @@ import {
   insertPolygonVertexAfter,
   markerCodeForItem,
   movePolygonVertex,
+  parseCollectionPlan,
   parseSuggestionsJson,
   parseTargetPolygonJson,
   pointInPolygon,
@@ -22,6 +24,58 @@ const SUGGESTIONS_FIXTURE_PATH = path.join(
   "fixtures",
   "suggestions.example.json",
 );
+
+describe("collection plan v1", () => {
+  it("reads the same portable example as the Python capture module", () => {
+    const plan = parseCollectionPlan(JSON.stringify(planExample));
+    expect(plan).toEqual(planExample);
+    expect(plan.rounds[0].targets[0]).toMatchObject({
+      arm: "left",
+      outline_plane_z_m: -0.11,
+      yaw_symmetry_deg: 180,
+    });
+    expect(plan.rounds[1].targets[0]).toMatchObject({
+      object: "box_base",
+      outline: null,
+      reason: "No reliable pose proxy",
+    });
+  });
+
+  it("rejects a manual target in a multi-object round and an out-of-frame outline", () => {
+    const multi = structuredClone(planExample);
+    multi.settings.objects_per_round = 2;
+    multi.rounds[0].targets.push(multi.rounds[1].targets[0]);
+    expect(() => parseCollectionPlan(JSON.stringify(multi))).toThrow(
+      /unprojectable target/,
+    );
+    const offscreen = structuredClone(planExample);
+    offscreen.rounds[0].targets[0].outline = [
+      [0, 0],
+      [640, 0],
+      [0, 1],
+    ];
+    expect(() => parseCollectionPlan(JSON.stringify(offscreen))).toThrow(
+      /outline bounds/,
+    );
+  });
+
+  it("rejects a duplicate saved episode and invalid hashes or versions", () => {
+    const progress = structuredClone(planExample);
+    for (const round of progress.rounds)
+      Object.assign(round, { status: "collected", episode_index: 100 });
+    expect(() => parseCollectionPlan(JSON.stringify(progress))).toThrow(
+      /collected episode index/,
+    );
+    expect(() =>
+      parseCollectionPlan(
+        JSON.stringify({ ...planExample, mask_bundle_sha256: "INVALID" }),
+      ),
+    ).toThrow(/hashes/);
+    expect(() =>
+      parseCollectionPlan(JSON.stringify({ ...planExample, version: 2 })),
+    ).toThrow(/format or version/);
+  });
+});
 
 describe("collectionData", () => {
   it("round-trips targets.json and rejects malformed or degenerate polygons", () => {

@@ -1002,6 +1002,33 @@ export const zh: Record<MessageKey, string> = {
 
   // ── collection (suggest) tab ────────────────────────────────────────────
   "collect.title": "补采清单",
+  "collect.plan.mode": "补采轮次",
+  "collect.plan.suggestions": "建议位置与测试点",
+  "collect.plan.rounds": "逐轮审核",
+  "collect.plan.empty": "暂无可审核轮次，请先生成一批。",
+  "collect.plan.round": "第 {id} 轮",
+  "collect.plan.pending": "待采",
+  "collect.plan.collected": "已采",
+  "collect.plan.skipped": "跳过",
+  "collect.plan.progress":
+    "已采 {collected}/{total} · 待采 {pending} · 跳过 {skipped}",
+  "collect.plan.roundCount": "新轮次数",
+  "collect.plan.objectsPerRound": "每轮物体数",
+  "collect.plan.generate": "生成一批轮次",
+  "collect.plan.regenerate": "重新生成待采轮次",
+  "collect.plan.replace": "重新生成本轮",
+  "collect.plan.delete": "删除本轮",
+  "collect.plan.deleteConfirm": "从计划移除待采的第 {id} 轮？",
+  "collect.plan.reviewed": "我已审核当前版本",
+  "collect.plan.download": "下载补采计划",
+  "collect.plan.updated": "已更新补采计划。",
+  "collect.plan.excluded": "本批不含 {object}：{reason}",
+  "collect.plan.invalid": "计划文件无效。请恢复上一份有效文件后再生成。",
+  "collect.plan.stale":
+    "此计划的数据集或标定不匹配。请先归档旧计划，再生成新计划。",
+  "collect.plan.imageMismatch": "计划和头部相机的图像坐标不匹配。",
+  "collect.plan.noSerial":
+    "标定未记录相机序列号。此计划可离线审核，不能用于实时引导录制。",
   "collect.loading": "正在读取补采配置…",
   "collect.loadError": "读取补采状态失败。",
   "collect.countLabel": "每物体补采",

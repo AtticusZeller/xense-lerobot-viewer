@@ -268,13 +268,13 @@ contract is files under `<LOCAL_DATASET_ROOT>/.xense-viewer/`, shared with the C
   (only after the frame image is confirmed loaded), skip or replace frames, run `calibrate`, verify by overlaying the
   projected tool point on the head video. Skipped frames stay in `frames.json` as sampling seeds and are hidden in
   the list by default.
-* **Collection** (`collection-*.tsx`): draw the target polygon, run `suggest`, export PNG/CSV.
+* **Collection** (`collection-*.tsx`): review and edit rounds and export the portable plan; the independent placements/test-points mode keeps `suggest`, mask bundles and CSV. The `plans/<org>__<name>@<rev>.json` contract lives in lerobot-check's `docs/collection-plan.md`. Viewer reads the plan and invokes the Python CLI for edits; it never writes progress or edits plan JSON directly. Export checks the ID and generation last reviewed in the browser.
 * **Running the CLI**: `src/lib/lerobot-check-runner.ts` runs `uv run --project $LEROBOT_CHECK_DIR lerobot-check …`,
   one run per dataset at a time. Without `LEROBOT_CHECK_DIR` the buttons only show the copyable command.
 * **v3 row offsets**: `dataset_from_index` is a dataset-global row; a v3 data file holds a slice, so subtract the
   file's first `index` before reading rows (`EpisodeLocator.rowOffset`). Getting this wrong only shows on episodes
   outside the first data file.
-* **Fixtures are copies.** `src/utils/__tests__/fixtures/{distribution,suggestions}.example.json` are copied from
+* **Fixtures are copies.** `src/utils/__tests__/fixtures/{distribution,suggestions,collection-plan}.example.json` are copied from
   lerobot-check `tests/fixtures/`. When lerobot-check changes the schema, re-copy them; a stale copy keeps the
   viewer tests green while the real file fails to parse.
 

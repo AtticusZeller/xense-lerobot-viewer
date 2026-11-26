@@ -1040,6 +1040,35 @@ export const en = {
 
   // ── collection (suggest) tab ────────────────────────────────────────────
   "collect.title": "Collection Plan",
+  "collect.plan.mode": "Collection rounds",
+  "collect.plan.suggestions": "Placements & test points",
+  "collect.plan.rounds": "Round review",
+  "collect.plan.empty": "No rounds to review. Generate a batch first.",
+  "collect.plan.round": "Round {id}",
+  "collect.plan.pending": "Pending",
+  "collect.plan.collected": "Collected",
+  "collect.plan.skipped": "Skipped",
+  "collect.plan.progress":
+    "{collected}/{total} collected · {pending} pending · {skipped} skipped",
+  "collect.plan.roundCount": "New rounds",
+  "collect.plan.objectsPerRound": "Objects per round",
+  "collect.plan.generate": "Generate batch",
+  "collect.plan.regenerate": "Regenerate pending batch",
+  "collect.plan.replace": "Regenerate this round",
+  "collect.plan.delete": "Delete this round",
+  "collect.plan.deleteConfirm": "Delete pending round {id} from the plan?",
+  "collect.plan.reviewed": "I reviewed this generation",
+  "collect.plan.download": "Download plan",
+  "collect.plan.updated": "Collection plan updated.",
+  "collect.plan.excluded": "Excluded from this batch — {object}: {reason}",
+  "collect.plan.invalid":
+    "The plan is invalid. Restore the last valid copy before generating again.",
+  "collect.plan.stale":
+    "This plan uses another dataset or calibration. Archive it before generating a new plan.",
+  "collect.plan.imageMismatch":
+    "The plan and head camera use different image coordinates.",
+  "collect.plan.noSerial":
+    "The calibration has no camera serial. This plan can be reviewed offline but cannot guide live recording.",
   "collect.loading": "Loading collection state…",
   "collect.loadError": "Failed to load collection state.",
   "collect.countLabel": "Per object",
