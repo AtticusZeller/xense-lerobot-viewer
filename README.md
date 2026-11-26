@@ -42,11 +42,11 @@ Open <http://localhost:3000>. The homepage scans your local LeRobot root and sho
 
 ## Collection mask guidance
 
-Generate a mask bundle with [`lerobot-check mask-template` and `mask-overlays`](https://github.com/AtticusZeller/lerobot-check#补采目标轮廓). Put the bundle in `<LOCAL_DATASET_ROOT>/.xense-viewer/masks/<org>__<name>@<revision>.json`. Start the viewer as above, open an episode and select **COLLECTION**. Select a placement or test-point number in the table to see its outline on the recorded head image. **Export PNG** includes the selected outline; **Download mask bundle** exports the same data for the capture machine. Regenerate the bundle after changing the calibration or generating new suggestions. CSV and the sampling strategy are unchanged.
+Generate a mask bundle with [`lerobot-check mask-template` and `mask-overlays`](https://github.com/AtticusZeller/lerobot-check/blob/main/README.md#补采目标轮廓). Put the bundle in `<LOCAL_DATASET_ROOT>/.xense-viewer/masks/<org>__<name>@<revision>.json`. Start the viewer as above, open an episode and select **COLLECTION**. Select a placement or test-point number in the table to see its outline on the recorded head image. **Export PNG** includes the selected outline; **Download mask bundle** exports the same data for the capture machine. Regenerate the bundle after changing the calibration or generating new suggestions. CSV and the sampling strategy are unchanged.
 
-### Run the live preview on elite
+### Run the live preview on `xense-robot-flexiv`
 
-The standalone preview needs a Linux desktop session, a USB-connected RealSense with the recording machine's normal device permissions, `uv`, and the downloaded JSON. It does not need Bun, the dataset, a model, the control program, or the rest of the viewer. On a minimal Ubuntu desktop install the OpenCV window libraries if missing:
+`Xense/pack_iphone_box_1119` was recorded on the first Xense Flexiv Rizon4 dual-arm rig, `xense-robot-flexiv` (user `xense-taccap`). The recorder uses `~/lerobot-xense` with the `lerobot-xense` Conda environment. The standalone preview runs in its own `uv` environment; it does not need that Conda environment, Bun, a model, or the dataset. Run it from the host's desktop session as `xense-taccap` with access to the head camera. If prerequisites are missing, have the machine owner install them without changing the recorder environment:
 
 ```bash
 sudo apt install libgl1 libglib2.0-0 libxcb-cursor0 libxkbcommon-x11-0
@@ -55,10 +55,19 @@ source "$HOME/.local/bin/env"
 uv python install 3.12
 ```
 
-Copy `scripts/collection_mask_live.py` from this checkout and the mask bundle to elite, then run from that directory. Set `HEAD_SERIAL` to the serial of the calibrated **head** camera, listed in the recording recipe (`robot.cameras.head.serial_number_or_name`) and recorded in `head.json` under `intrinsics.device` when available. For `pack_iphone_box_1119`, use the original D435 with the RGB8 profile at 640×480 and 30 fps; width and height come from the bundle. A different mount, image rotation, crop, or changed work surface requires updating calibration or the affected templates before regenerating the bundle.
+From the viewer checkout, copy only the standalone script and the JSON downloaded from COLLECTION. Create `~/collection-mask-preview` on the capture host first; do not copy into `~/lerobot-xense`.
 
 ```bash
-uv run --python 3.12 --with pyrealsense2 collection_mask_live.py /path/to/masks.json \
+scp scripts/collection_mask_live.py /path/to/downloaded-mask-bundle.json \
+  xense-taccap@xense-robot-flexiv:collection-mask-preview/
+```
+
+On the capture host, read `robot.cameras.head.serial_number_or_name` in `~/lerobot-xense/recipes/record/bi_flexiv_rizon4_rt/pack_iphone-taccap.yaml` and compare it with `intrinsics.device` in the `head.json` used to generate the bundle. For this dataset the calibration records D435 serial `346522071766`, RGB8 at 640×480 and 30 fps. Use that serial only if it matches the recipe and the camera is still at the calibrated mount. Width and height come from the bundle. If the mount, rotation, crop, or work surface changed, update the calibration or the affected templates before regenerating the bundle.
+
+```bash
+cd ~/collection-mask-preview
+HEAD_SERIAL=346522071766
+uv run --python 3.12 --with pyrealsense2 collection_mask_live.py downloaded-mask-bundle.json \
   --realsense "$HEAD_SERIAL" --fps 30
 ```
 

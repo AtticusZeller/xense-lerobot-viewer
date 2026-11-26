@@ -48,7 +48,7 @@
 **Verification**
 
 1. [x] 用真实 640×480 MP4 当实时源录屏，播放中切换至少两个目标，证明底图持续变化、目标轮廓相对像素固定并按所选目标切换；用同一 bundle 做像素一致性测试及尺寸不符的负例。本机通用摄像头只做设备枚举；未用其验证几何。
-2. [ ] 真机留给采集端主人：用同一 D435/序列号、RGB profile、镜头和原标定机位，在未启动采集时选多个远近及朝向不同的点，把实物移入轮廓并复验（含 iPhone 首尾），退出后确认采集程序能重新打开相机。若摄像头或工作平面变动，重标定并重新生成。
+2. [ ] 真机留给采集端主人：数据来自非夕第一台 Flexiv Rizon4 双臂机 `xense-robot-flexiv`，采集用户为 `xense-taccap`，录制用 `~/lerobot-xense` 和 `lerobot-xense` Conda 环境。按 [README](../../README.md#run-the-live-preview-on-xense-robot-flexiv) 将小窗脚本和 bundle 拷到独立目录，核对采集 recipe 和 `head.json` 的头相机序列号。使用同一 D435、RGB profile、镜头和原标定机位，在采集开始前用多个远近及朝向不同的点复验（含 iPhone 首尾），退出小窗后确认采集程序能重新打开相机。若摄像头或工作平面变动，重标定并重新生成。
 
 **Done**
 
