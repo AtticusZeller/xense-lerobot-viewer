@@ -1,4 +1,6 @@
 import type {
+  CollectionMaskBundle,
+  CollectionMaskTarget,
   SuggestionObjectGeometry,
   SuggestionPointItem,
   SuggestionsFile,
@@ -467,6 +469,113 @@ export function formatSuggestionsCsv(
   for (const item of suggestions.test_points) emitRow("test_point", item);
 
   return `${lines.join("\n")}\n`;
+}
+
+export function collectionTargetKey(
+  kind: CollectionMaskTarget["kind"],
+  item: Pick<SuggestionPointItem, "object" | "index"> & {
+    tier?: SuggestionTier;
+  },
+): string {
+  return JSON.stringify(
+    kind === "placement"
+      ? [kind, item.object, item.index]
+      : [kind, item.object, item.tier, item.index],
+  );
+}
+
+function parseMaskTargetKind(target: Record<string, unknown>) {
+  const { kind, tier } = target;
+  if (kind === "placement" && tier === undefined) {
+    return { kind } as const;
+  }
+  if (
+    kind === "test_point" &&
+    (tier === "dense" || tier === "edge" || tier === "empty")
+  ) {
+    return { kind, tier } as const;
+  }
+  throw new Error("Invalid collection mask target kind or tier");
+}
+
+export function parseCollectionMasks(rawText: string): CollectionMaskBundle {
+  const value: unknown = JSON.parse(rawText);
+  if (
+    !isPlainObject(value) ||
+    value.version !== 1 ||
+    !isPlainObject(value.sources) ||
+    !Array.isArray(value.targets)
+  )
+    throw new Error("Invalid collection mask bundle");
+  const size = parsePoint2(value.image_size, "image_size");
+  if (!size.every((n) => Number.isInteger(n) && n > 0)) {
+    throw new Error("Invalid collection mask image size");
+  }
+  const keys = new Set<string>();
+  const targets = value.targets.map((target: unknown): CollectionMaskTarget => {
+    if (!isPlainObject(target)) {
+      throw new Error("Invalid collection mask target");
+    }
+    const classification = parseMaskTargetKind(target);
+    const object = assertString(target.object, "object");
+    const index = assertInt(target.index, "index");
+    if (!object || index < 1)
+      throw new Error("Invalid collection mask target ID");
+    const outline =
+      target.outline === null
+        ? null
+        : Array.isArray(target.outline)
+          ? target.outline.map((point: unknown) =>
+              parsePoint2(point, "outline"),
+            )
+          : [];
+    const reason =
+      target.reason === null ? null : assertString(target.reason, "reason");
+    if (
+      outline
+        ? outline.length < 3 ||
+          reason !== null ||
+          outline.some(
+            ([x, y]) => x < 0 || y < 0 || x >= size[0] || y >= size[1],
+          )
+        : !reason
+    ) {
+      throw new Error("Invalid collection mask outline or missing reason");
+    }
+    const item: CollectionMaskTarget = {
+      ...classification,
+      object,
+      index,
+      outline,
+      reason,
+      pixel: parseNullablePoint2(target.pixel, "pixel"),
+      arrow_end_pixel: parseNullablePoint2(
+        target.arrow_end_pixel,
+        "arrow_end_pixel",
+      ),
+    };
+    const key = collectionTargetKey(item.kind, item);
+    if (keys.has(key)) throw new Error("Duplicate collection mask target");
+    keys.add(key);
+    return item;
+  });
+  return {
+    version: 1,
+    repo_id: assertString(value.repo_id, "repo_id"),
+    revision: assertString(value.revision, "revision"),
+    camera: assertString(value.camera, "camera"),
+    image_size: size,
+    calibration_sha256: assertString(
+      value.calibration_sha256,
+      "calibration_sha256",
+    ),
+    suggestions_sha256: assertString(
+      value.suggestions_sha256,
+      "suggestions_sha256",
+    ),
+    sources: value.sources,
+    targets,
+  };
 }
 
 export function markerCodeForItem(

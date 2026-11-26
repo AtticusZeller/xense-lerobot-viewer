@@ -1048,6 +1048,17 @@ export const en = {
   "collect.generating": "Generating…",
   "collect.exportPng": "Export PNG",
   "collect.exportCsv": "Export CSV",
+  "collect.exportMasks": "Download mask bundle",
+  "collect.masks.invalid": "Invalid mask bundle. Generate it again.",
+  "collect.masks.stale":
+    "The calibration or suggestions changed. Generate the mask bundle again.",
+  "collect.masks.imageMismatch":
+    "The mask bundle and head camera use different image coordinates.",
+  "collect.masks.missing":
+    "No mask bundle. Generate one with lerobot-check mask-overlays.",
+  "collect.masks.select": "Select a target in the table to preview its mask.",
+  "collect.masks.unavailable": "No mask for {target}: {reason}",
+  "collect.masks.active": "Target mask: {target}",
   "collect.noCalibNotice":
     "Head camera is not calibrated yet; markers and pixel polygons require calibration.",
   "collect.goCalibration": "Open Calibration",

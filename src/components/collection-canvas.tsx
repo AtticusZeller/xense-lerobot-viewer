@@ -51,6 +51,7 @@ interface CollectionCanvasProps {
   onPolygonChange: (next: TargetPolygonVertex[]) => void;
   markers: readonly CollectionMarkerEntry[];
   highlightedKey: string | null;
+  selectedOutline: readonly TargetPolygonVertex[] | null;
   onHoverMarker: (key: string | null) => void;
 }
 
@@ -258,6 +259,7 @@ export const CollectionCanvas = React.forwardRef<
     onPolygonChange,
     markers,
     highlightedKey,
+    selectedOutline,
     onHoverMarker,
   },
   ref,
@@ -338,6 +340,25 @@ export const CollectionCanvas = React.forwardRef<
         });
       }
 
+      if (
+        selectedOutline &&
+        videoReady &&
+        el?.videoWidth === imgW &&
+        el.videoHeight === imgH
+      ) {
+        ctx.beginPath();
+        selectedOutline.forEach(([u, v], i) => {
+          if (i === 0) ctx.moveTo(u * scale, v * scale);
+          else ctx.lineTo(u * scale, v * scale);
+        });
+        ctx.closePath();
+        ctx.fillStyle = "#22d3ee45";
+        ctx.strokeStyle = "#22d3ee";
+        ctx.lineWidth = 2 * scale;
+        ctx.fill();
+        ctx.stroke();
+      }
+
       // Draw non-highlighted first, highlighted last so it stays on top.
       for (const entry of markers) {
         if (!forExport && entry.key === highlightedKey) continue;
@@ -357,6 +378,7 @@ export const CollectionCanvas = React.forwardRef<
       imgW,
       markers,
       polygon,
+      selectedOutline,
       showPolygon,
       videoReady,
     ],
@@ -505,6 +527,13 @@ export const CollectionCanvas = React.forwardRef<
     if (dragIndex !== null) setDragIndex(null);
   };
 
+  const videoElement = videoRef.current;
+  const mismatchedFrame =
+    selectedOutline &&
+    videoReady &&
+    videoElement &&
+    (videoElement.videoWidth !== imgW || videoElement.videoHeight !== imgH);
+
   return (
     <div className="flex flex-col gap-1.5">
       <video
@@ -537,6 +566,11 @@ export const CollectionCanvas = React.forwardRef<
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-950/60 text-xs text-slate-300">
             {t("calib.loadingFrame")}
           </div>
+        )}
+        {mismatchedFrame && (
+          <p className="absolute inset-x-0 bottom-0 bg-slate-950/90 p-2 text-xs text-amber-200">
+            {t("collect.masks.imageMismatch")}
+          </p>
         )}
         {error && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-950/80 p-4 text-xs text-rose-300">

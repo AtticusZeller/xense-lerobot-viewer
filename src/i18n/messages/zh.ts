@@ -1010,6 +1010,15 @@ export const zh: Record<MessageKey, string> = {
   "collect.generating": "生成中…",
   "collect.exportPng": "导出 PNG",
   "collect.exportCsv": "导出 CSV",
+  "collect.exportMasks": "下载目标轮廓包",
+  "collect.masks.invalid": "目标轮廓包无效，请重新生成。",
+  "collect.masks.stale": "标定或建议点已变化，请重新生成目标轮廓包。",
+  "collect.masks.imageMismatch": "目标轮廓包和头部相机的图像坐标不匹配。",
+  "collect.masks.missing":
+    "尚无目标轮廓包，请用 lerobot-check mask-overlays 生成。",
+  "collect.masks.select": "在表格中选择一个目标以预览轮廓。",
+  "collect.masks.unavailable": "{target} 没有可用轮廓：{reason}",
+  "collect.masks.active": "目标轮廓：{target}",
   "collect.noCalibNotice":
     "尚未标定头部相机，无法在画面绘制点位或使用像素多边形。",
   "collect.goCalibration": "前往标定",

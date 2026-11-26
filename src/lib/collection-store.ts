@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveCalibrationArtifactPaths } from "@/lib/calibration-store";
@@ -22,6 +23,8 @@ import type { DistributionFile } from "@/types/distribution.types";
 import { parseCalibrationHeadJson } from "@/utils/calibrationData";
 import { hasNonZeroDistortion } from "@/utils/calibrationMath";
 import {
+  collectionTargetKey,
+  parseCollectionMasks,
   parseSuggestionsJson,
   parseTargetPolygonJson,
   serializeTargetPolygon,
@@ -42,6 +45,7 @@ export interface CollectionArtifactPaths {
   revision: string;
   targetsPath: string;
   suggestionsPath: string;
+  masksPath: string;
   distributionPath: string;
   headPath: string;
 }
@@ -82,12 +86,14 @@ export async function resolveCollectionArtifactPaths(
     `${key}@${revision}.json`,
   );
 
+  const masksPath = path.join(viewerRoot, "masks", `${key}@${revision}.json`);
+
   const [distPaths, calibPaths] = await Promise.all([
     resolveDistributionArtifactPaths(datasetDir, options),
     resolveCalibrationArtifactPaths(datasetDir, options),
   ]);
 
-  for (const target of [targetsPath, suggestionsPath]) {
+  for (const target of [targetsPath, suggestionsPath, masksPath]) {
     if (!isInsideRoot(viewerRoot, target)) {
       throw new Error(`Artifact path escaped ${VIEWER_STORE_DIR}: ${target}`);
     }
@@ -101,6 +107,7 @@ export async function resolveCollectionArtifactPaths(
     revision,
     targetsPath,
     suggestionsPath,
+    masksPath,
     distributionPath: distPaths.distributionPath,
     headPath: calibPaths.headPath,
   };
@@ -155,12 +162,14 @@ export async function loadCollectionState(
   } = {},
 ): Promise<CollectionStatePayload> {
   const paths = await resolveCollectionArtifactPaths(datasetDir, options);
-  const [targetsRaw, suggestionsRaw, distRaw, headRaw] = await Promise.all([
-    readFileIfExists(paths.targetsPath),
-    readFileIfExists(paths.suggestionsPath),
-    readFileIfExists(paths.distributionPath),
-    readFileIfExists(paths.headPath),
-  ]);
+  const [targetsRaw, suggestionsRaw, distRaw, headRaw, masksRaw] =
+    await Promise.all([
+      readFileIfExists(paths.targetsPath),
+      readFileIfExists(paths.suggestionsPath),
+      readFileIfExists(paths.distributionPath),
+      readFileIfExists(paths.headPath),
+      readFileIfExists(paths.masksPath),
+    ]);
 
   const parsedTargets = tryParse<TargetPolygonFile>(
     targetsRaw,
@@ -182,6 +191,54 @@ export async function loadCollectionState(
     parsedTargets.value?.image_size ??
     parsedHead.value?.image_size ??
     DEFAULT_IMAGE_SIZE;
+
+  const parsedMasks = tryParse(masksRaw, parseCollectionMasks);
+  const masks = parsedMasks.value;
+  const suggestions = parsedSuggestions.value;
+  const digest = (text: string) =>
+    createHash("sha256").update(text).digest("hex");
+  let masksError: CollectionStatePayload["masksError"] = parsedMasks.error
+    ? "invalid"
+    : null;
+  if (masks) {
+    if (
+      !suggestions ||
+      !suggestionsRaw ||
+      !parsedHead.value ||
+      !headRaw ||
+      masks.repo_id !== paths.repoId ||
+      masks.revision !== paths.revision ||
+      masks.calibration_sha256 !== digest(headRaw) ||
+      masks.suggestions_sha256 !== digest(suggestionsRaw)
+    )
+      masksError = "stale";
+    else if (
+      masks.camera !== camera ||
+      masks.camera !== parsedHead.value.camera ||
+      masks.image_size.some(
+        (n, i) => n !== imageSize[i] || n !== parsedHead.value?.image_size[i],
+      )
+    ) {
+      masksError = "imageMismatch";
+    } else {
+      const keys = new Set([
+        ...suggestions.placements.map((item) =>
+          collectionTargetKey("placement", item),
+        ),
+        ...suggestions.test_points.map((item) =>
+          collectionTargetKey("test_point", item),
+        ),
+      ]);
+      if (
+        keys.size !== masks.targets.length ||
+        masks.targets.some(
+          (target) => !keys.has(collectionTargetKey(target.kind, target)),
+        )
+      ) {
+        masksError = "invalid";
+      }
+    }
+  }
 
   const suggestCli = buildSuggestCommand(datasetDir, paths.repoId, {
     count: 10,
@@ -211,6 +268,8 @@ export async function loadCollectionState(
     suggestionsExists: suggestionsRaw !== null,
     suggestions: parsedSuggestions.value,
     suggestionsError: parsedSuggestions.error,
+    masks: masksError ? null : masks,
+    masksError,
     calibration: {
       exists: headRaw !== null && parsedHead.value !== null,
       hasNonZeroDistortion: hasNonZeroDistortion(parsedHead.value?.intrinsics),
