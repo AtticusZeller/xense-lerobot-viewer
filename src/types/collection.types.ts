@@ -64,14 +64,16 @@ export interface SuggestionsFile {
 
 export type CollectionTargetKind = "placement" | "test_point";
 
-export interface CollectionMaskTarget extends Pick<
+export type CollectionMaskTarget = Pick<
   SuggestionPointItem,
-  "object" | "tier" | "index" | "pixel" | "arrow_end_pixel"
-> {
-  kind: CollectionTargetKind;
+  "object" | "index" | "pixel" | "arrow_end_pixel"
+> & {
   outline: TargetPolygonVertex[] | null;
   reason: string | null;
-}
+} & (
+    | { kind: "placement"; tier?: never }
+    | { kind: "test_point"; tier: Exclude<SuggestionTier, "sparse"> }
+  );
 
 export interface CollectionMaskBundle {
   version: 1;

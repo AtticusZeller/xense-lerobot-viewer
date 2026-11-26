@@ -136,7 +136,7 @@ describe("collection-store", () => {
       kind,
       object,
       index,
-      tier,
+      ...(kind === "test_point" ? { tier } : {}),
       pixel,
       arrow_end_pixel,
       outline:
@@ -168,6 +168,28 @@ describe("collection-store", () => {
     expect((await loadCollectionState(datasetDir, options)).masks).toEqual(
       bundle,
     );
+    const badClassifications = [
+      [{ ...targets[0], tier: "empty" }, ...targets.slice(1)],
+      targets.map((item) =>
+        item.kind === "test_point" && item.tier === "dense"
+          ? { ...item, tier: undefined }
+          : item,
+      ),
+      targets.map((item) =>
+        item.kind === "test_point" && item.tier === "dense"
+          ? { ...item, tier: "sparse" }
+          : item,
+      ),
+    ];
+    for (const badTargets of badClassifications) {
+      await fs.writeFile(
+        paths.masksPath,
+        JSON.stringify({ ...bundle, targets: badTargets }),
+      );
+      expect((await loadCollectionState(datasetDir, options)).masksError).toBe(
+        "invalid",
+      );
+    }
     await fs.writeFile(
       paths.masksPath,
       JSON.stringify({ ...bundle, image_size: [660, 480] }),

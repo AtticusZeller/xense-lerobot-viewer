@@ -24,12 +24,11 @@ TEST_PREFIX = {"dense": "D", "edge": "E", "empty": "X"}
 
 
 def target_label(target: dict[str, Any]) -> str:
-    kind = target["kind"]
+    code = target["index"]
+    if target["kind"] == "placement":
+        return f"{target['object']} {code}  |  placement"
     tier = target["tier"]
-    code = str(target["index"])
-    if kind == "test_point":
-        code = TEST_PREFIX[tier] + code
-    return f"{target['object']} {code}  |  {kind} / {tier}"
+    return f"{target['object']} {TEST_PREFIX[tier]}{code}  |  test_point / {tier}"
 
 
 def pixel(point: list[float]) -> tuple[int, int]:

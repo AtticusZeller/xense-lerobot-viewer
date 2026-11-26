@@ -473,9 +473,29 @@ export function formatSuggestionsCsv(
 
 export function collectionTargetKey(
   kind: CollectionMaskTarget["kind"],
-  item: Pick<SuggestionPointItem, "object" | "tier" | "index">,
+  item: Pick<SuggestionPointItem, "object" | "index"> & {
+    tier?: SuggestionTier;
+  },
 ): string {
-  return JSON.stringify([kind, item.object, item.tier, item.index]);
+  return JSON.stringify(
+    kind === "placement"
+      ? [kind, item.object, item.index]
+      : [kind, item.object, item.tier, item.index],
+  );
+}
+
+function parseMaskTargetKind(target: Record<string, unknown>) {
+  const { kind, tier } = target;
+  if (kind === "placement" && tier === undefined) {
+    return { kind } as const;
+  }
+  if (
+    kind === "test_point" &&
+    (tier === "dense" || tier === "edge" || tier === "empty")
+  ) {
+    return { kind, tier } as const;
+  }
+  throw new Error("Invalid collection mask target kind or tier");
 }
 
 export function parseCollectionMasks(rawText: string): CollectionMaskBundle {
@@ -493,16 +513,13 @@ export function parseCollectionMasks(rawText: string): CollectionMaskBundle {
   }
   const keys = new Set<string>();
   const targets = value.targets.map((target: unknown): CollectionMaskTarget => {
-    if (
-      !isPlainObject(target) ||
-      (target.kind !== "placement" && target.kind !== "test_point")
-    ) {
-      throw new Error("Invalid collection mask target kind");
+    if (!isPlainObject(target)) {
+      throw new Error("Invalid collection mask target");
     }
+    const classification = parseMaskTargetKind(target);
     const object = assertString(target.object, "object");
-    const tier = assertString(target.tier, "tier");
     const index = assertInt(target.index, "index");
-    if (!object || !VALID_TIERS.has(tier) || index < 1)
+    if (!object || index < 1)
       throw new Error("Invalid collection mask target ID");
     const outline =
       target.outline === null
@@ -525,10 +542,9 @@ export function parseCollectionMasks(rawText: string): CollectionMaskBundle {
     ) {
       throw new Error("Invalid collection mask outline or missing reason");
     }
-    const item = {
-      kind: target.kind,
+    const item: CollectionMaskTarget = {
+      ...classification,
       object,
-      tier: tier as SuggestionTier,
       index,
       outline,
       reason,
@@ -537,7 +553,7 @@ export function parseCollectionMasks(rawText: string): CollectionMaskBundle {
         target.arrow_end_pixel,
         "arrow_end_pixel",
       ),
-    } as const;
+    };
     const key = collectionTargetKey(item.kind, item);
     if (keys.has(key)) throw new Error("Duplicate collection mask target");
     keys.add(key);

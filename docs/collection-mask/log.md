@@ -11,7 +11,7 @@
 - [x] `lerobot-check` 加 `mask-template`，用已有 `DatasetView`/PyAV 以 v3 视频分段起点加 episode 帧时间提取原始分辨率的头图，支持预览和读取框提示（可给正/负点细化）；从已审核 episode 的 `grasp`/放稳（`end - 1`）事件附近选每个物体一帧。抓取时优先用夹爪尚未遮挡、物体还未移动的临近帧，放稳时优先用夹爪已让开、物体未动的帧，图像帧与用作位姿锚定的事件帧分别记录。操作员看 cutout 后才采用模板。不批量分割或推理视频。
 - [x] 模型用 Transformers 内置 `Sam2Model`/`Sam2Processor` 跑 `facebook/sam2.1-hiera-tiny`，固定模型版本；权重 `model.safetensors` 为 155.9 MB（Hub dry-run），只在首次显式下载或已有本地权重时使用。`uv add --optional` 管理 Transformers 等分割依赖，新增 Python wheel 预计数十 MB，PyTorch/torchvision 原已随 LeRobot 安装（本机 2.10.0/0.25.0；从空白装 CUDA 运行时仍是 GB 级）。不编译 Meta CUDA 扩展；一次性 CPU/CUDA 可选。Viewer 和采集端都不装模型。
 - [x] 模板保存来源、标定身份、物体/arm、参考 `(x,y,raw_yaw)`（用 distribution 已校准的 tool point，不挪到轮廓中心）及闭合外轮廓的物体局部米制坐标。把源轮廓像素反投影到该物体建议平面，减参考 `(x,y)`，旋转 `-yaw_ref`；绘制时旋转到目标 yaw、加目标 `(x,y)`，在目标平面 z 上经相应 arm 的 `T_cam_base` 和头部内参投影。对明显偏离可见表面的工具点平面允许显式 per-object 高度偏移（源/目标一致，默认零）。用 `yaw_symmetry_deg` 选择离参考角最近的等价目标方向（固定边界 tie；180° 两向等价；360° 保留首尾）。这是固定相机下的单平面外形近似，不能恢复侧面/厚度；box_base 的 release yaw 仅是代理，验收单独看它是否重现可接受方向，不改 `suggest` 的坐标/抽样语义。
-- [x] 加 `mask-overlays` 读取现有 suggestions、`head.json` 和已审核模板，写独立的 `.xense-viewer/masks/<slug>@<revision>.json`。不改旧 suggestions/CSV。单一 v1 JSON 可拷贝到采集机：带 dataset/revision/camera/image_size、标定/建议文件 SHA-256、物体与源帧来源、按 `(kind,object,tier,index)` 标识的像素外轮廓。缺模板或无法有效投影的点显式标注原因；不画假轮廓。读取旧文件仍看点/箭头；建议或标定改变后旧 mask 不显示，须重生成。
+- [x] 加 `mask-overlays` 读取现有 suggestions、`head.json` 和已审核模板，写独立的 `.xense-viewer/masks/<slug>@<revision>.json`。不改旧 suggestions/CSV。单一 v1 JSON 可拷贝到采集机：带 dataset/revision/camera/image_size、标定/建议文件 SHA-256、物体与源帧来源、按 `(kind,object,index)` 标识补采轮廓，测试点还用 `tier` 区分。补采的采样优先级保留在 `suggestions.json`，不进入 bundle。缺模板或无法有效投影的点显式标注原因；不画假轮廓。读取旧文件仍看点/箭头；建议或标定改变后旧 mask 不显示，须重生成。
 
 **Verification**
 
