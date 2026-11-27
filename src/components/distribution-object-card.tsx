@@ -9,16 +9,25 @@ import type {
 import type {
   DistributionCoverageConfig,
   DistributionObjectEntry,
-  DistributionObjectPose,
+  DistributionObjectLayerKind,
+  DistributionObjectLayerPose,
+  DistributionObjectPoseBase,
   DistributionPositionPoint,
 } from "@/types/distribution.types";
 import { hasNonZeroDistortion } from "@/utils/calibrationMath";
+import { selectObjectLayer } from "@/utils/distributionData";
 import {
   projectBasePointToPixel,
   recomputeObjectCoverage,
 } from "@/utils/distributionMetrics";
 import { frameToTime } from "@/utils/subtaskEditor";
 import { mediaTimeFromEpisodeTime } from "@/utils/videoSegments";
+
+function isObjectLayerPose(
+  pose: DistributionObjectPoseBase,
+): pose is DistributionObjectLayerPose {
+  return "length_m" in pose && "width_m" in pose;
+}
 
 export interface EpisodeColorResolver {
   colorOf(episodeIndex: number): string;
@@ -28,6 +37,7 @@ export interface EpisodeColorResolver {
 interface DistributionObjectCardProps {
   encodedPath: string;
   objectEntry: DistributionObjectEntry;
+  layer: DistributionObjectLayerKind;
   coverageConfig: DistributionCoverageConfig;
   selectedEpisodes: ReadonlySet<number>;
   selectedEpisodeList: readonly number[];
@@ -54,7 +64,7 @@ function HeadCameraObjectProjection({
   encodedPath: string;
   head: CalibrationHeadFile;
   arm: string;
-  poses: readonly DistributionObjectPose[];
+  poses: readonly DistributionObjectPoseBase[];
   referenceEpisodes: readonly number[];
   colorResolver: EpisodeColorResolver;
 }) {
@@ -279,6 +289,7 @@ function HeadCameraObjectProjection({
 export function DistributionObjectCard({
   encodedPath,
   objectEntry,
+  layer,
   coverageConfig,
   selectedEpisodes,
   selectedEpisodeList,
@@ -289,12 +300,28 @@ export function DistributionObjectCard({
   onRecompute,
 }: DistributionObjectCardProps) {
   const t = useT();
-  const [hovered, setHovered] = useState<DistributionObjectPose | null>(null);
+  const [hovered, setHovered] = useState<DistributionObjectPoseBase | null>(
+    null,
+  );
+
+  useEffect(() => {
+    setHovered(null);
+  }, [layer]);
+
+  const selected = useMemo(
+    () => selectObjectLayer(objectEntry, layer),
+    [layer, objectEntry],
+  );
 
   const summary = useMemo(
     () =>
-      recomputeObjectCoverage(objectEntry, coverageConfig, selectedEpisodes),
-    [coverageConfig, objectEntry, selectedEpisodes],
+      recomputeObjectCoverage(
+        objectEntry,
+        coverageConfig,
+        selectedEpisodes,
+        layer,
+      ),
+    [coverageConfig, layer, objectEntry, selectedEpisodes],
   );
 
   const plot = useMemo(() => {
@@ -349,12 +376,18 @@ export function DistributionObjectCard({
     };
   }, [summary]);
 
-  const hasArmCalibration = Boolean(calibrationHead?.arms[objectEntry.arm]);
+  const hasArmCalibration = Boolean(calibrationHead?.arms[selected.arm]);
   const showHeadProjection =
     hasArmCalibration &&
-    positionPoint === "tool_point" &&
-    calibrationHead !== null;
-  const showTcpNotice = hasArmCalibration && positionPoint === "tcp";
+    calibrationHead !== null &&
+    (selected.resolvedLayer === "object" || positionPoint === "tool_point");
+  const showTcpNotice =
+    selected.resolvedLayer === "tool" &&
+    hasArmCalibration &&
+    positionPoint === "tcp";
+  const displayZ =
+    summary.median_z_m ??
+    (selected.resolvedLayer === "object" ? selected.planeZM : null);
 
   return (
     <div className="panel flex flex-col gap-3 p-3.5 text-xs">
@@ -364,17 +397,28 @@ export function DistributionObjectCard({
             {objectEntry.name}
           </h4>
           <span className="font-mono text-[11px] text-slate-400">
-            {objectEntry.subtask} · {objectEntry.event} · {objectEntry.arm}
+            {selected.resolvedLayer === "object"
+              ? `${objectEntry.subtask} · f${selected.frame} (${selected.source}) · ${selected.arm}`
+              : `${objectEntry.subtask} · ${objectEntry.event} · ${selected.arm}`}
           </span>
         </div>
         <div className="flex items-center gap-3 font-mono text-[11px] text-slate-400 tabular">
           <span>n={summary.poses.length}</span>
-          {summary.median_z_m !== null && (
-            <span>z={summary.median_z_m.toFixed(3)}m</span>
+          {summary.skipped.length > 0 && (
+            <span className="text-amber-300">
+              skip={summary.skipped.length}
+            </span>
           )}
-          <span>sym={objectEntry.yaw_symmetry_deg}°</span>
+          {displayZ !== null && <span>z={displayZ.toFixed(3)}m</span>}
+          <span>sym={selected.yawPeriodDeg}°</span>
         </div>
       </div>
+
+      {selected.fallbackToTool && (
+        <div className="rounded border border-amber-400/35 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-200">
+          {t("dist.layerObjectFallback")}
+        </div>
+      )}
 
       {showTcpNotice && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-amber-400/35 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-200">
@@ -405,6 +449,9 @@ export function DistributionObjectCard({
               <span className="font-mono text-cyan-200 tabular">
                 ep {hovered.episode_index} ({hovered.x_m.toFixed(3)},{" "}
                 {hovered.y_m.toFixed(3)}) {hovered.folded_yaw_deg.toFixed(1)}°
+                {isObjectLayerPose(hovered)
+                  ? ` ${(hovered.length_m * 100).toFixed(1)}×${(hovered.width_m * 100).toFixed(1)}cm`
+                  : ""}
               </span>
             ) : (
               <span className="font-mono text-slate-500">
@@ -582,13 +629,28 @@ export function DistributionObjectCard({
           <HeadCameraObjectProjection
             encodedPath={encodedPath}
             head={calibrationHead}
-            arm={objectEntry.arm}
+            arm={selected.arm}
             poses={summary.poses}
             referenceEpisodes={selectedEpisodeList}
             colorResolver={colorResolver}
           />
         )}
       </div>
+
+      {summary.skipped.length > 0 && (
+        <details className="rounded border border-white/10 bg-black/25 px-2.5 py-1.5 text-[11px] text-slate-300">
+          <summary className="cursor-pointer select-none font-medium text-amber-200">
+            {t("dist.skippedEpisodes", { count: summary.skipped.length })}
+          </summary>
+          <ul className="mt-1.5 max-h-28 space-y-0.5 overflow-y-auto font-mono text-[10px] text-slate-400">
+            {summary.skipped.map((item) => (
+              <li key={`${item.episode_index}-${item.reason}`}>
+                ep {item.episode_index}: {item.reason}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
     </div>
   );
 }

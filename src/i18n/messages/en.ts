@@ -946,6 +946,14 @@ export const en = {
   "dist.colFrames": "Frames",
   "dist.colShare": "Share",
   "dist.sectionObjects": "Object initial poses",
+  "dist.layerSwitchLabel": "Pose layer",
+  "dist.layerObject": "Object layer",
+  "dist.layerTool": "End-effector layer",
+  "dist.layerObjectUnavailable":
+    "Object layer unavailable (not included in this distribution.json)",
+  "dist.layerObjectFallback":
+    "No object layer for this object; showing end-effector layer",
+  "dist.skippedEpisodes": "Skipped ({count})",
   "dist.topDownXy": "Top-down XY",
   "dist.sparseThreshold": "Sparse < {threshold}",
   "dist.noPoses": "No poses in selection",

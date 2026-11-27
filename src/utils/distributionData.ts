@@ -9,7 +9,11 @@ import type {
   DistributionFrameShares,
   DistributionObjectCoverage,
   DistributionObjectEntry,
+  DistributionObjectLayer,
+  DistributionObjectLayerKind,
+  DistributionObjectLayerPose,
   DistributionObjectPose,
+  DistributionObjectPoseBase,
   DistributionObjectSkipped,
   DistributionPose,
   DistributionPositionPoint,
@@ -151,6 +155,14 @@ function parseProvenance(raw: unknown): DistributionProvenance {
       raw.skipped_episodes,
       "provenance.skipped_episodes",
     ),
+    ...(raw.object_poses_sha256 === undefined
+      ? {}
+      : {
+          object_poses_sha256: assertNullableString(
+            raw.object_poses_sha256,
+            "provenance.object_poses_sha256",
+          ),
+        }),
   };
 }
 
@@ -344,6 +356,96 @@ function parseObjectCoverage(
   };
 }
 
+function parseObjectSkipped(
+  raw: unknown,
+  label: string,
+): DistributionObjectSkipped[] {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) {
+    throw new Error(`Invalid ${label}: expected array`);
+  }
+  return raw.map((skip, sIdx) => {
+    if (!isPlainObject(skip)) {
+      throw new Error(`Invalid ${label}[${sIdx}]: expected object`);
+    }
+    return {
+      episode_index: assertNonNegativeInt(
+        skip.episode_index,
+        `${label}[${sIdx}].episode_index`,
+      ),
+      reason: assertString(skip.reason, `${label}[${sIdx}].reason`),
+    };
+  });
+}
+
+function parseObjectLayer(
+  raw: unknown,
+  label: string,
+): DistributionObjectLayer | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!isPlainObject(raw)) {
+    throw new Error(`Invalid ${label}: expected object`);
+  }
+  const yawPeriodDeg = assertFiniteNumber(
+    raw.yaw_period_deg,
+    `${label}.yaw_period_deg`,
+  );
+  if (yawPeriodDeg <= 0) {
+    throw new Error(
+      `Invalid ${label}.yaw_period_deg: expected positive number`,
+    );
+  }
+  if (!Array.isArray(raw.poses)) {
+    throw new Error(`Invalid ${label}.poses: expected array`);
+  }
+  const poses: DistributionObjectLayerPose[] = raw.poses.map((pose, pIdx) => {
+    if (!isPlainObject(pose)) {
+      throw new Error(`Invalid ${label}.poses[${pIdx}]: expected object`);
+    }
+    return {
+      episode_index: assertNonNegativeInt(
+        pose.episode_index,
+        `${label}.poses[${pIdx}].episode_index`,
+      ),
+      frame: assertNonNegativeInt(pose.frame, `${label}.poses[${pIdx}].frame`),
+      arm: assertString(pose.arm, `${label}.poses[${pIdx}].arm`),
+      x_m: assertFiniteNumber(pose.x_m, `${label}.poses[${pIdx}].x_m`),
+      y_m: assertFiniteNumber(pose.y_m, `${label}.poses[${pIdx}].y_m`),
+      z_m: assertFiniteNumber(pose.z_m, `${label}.poses[${pIdx}].z_m`),
+      raw_yaw_deg: assertFiniteNumber(
+        pose.raw_yaw_deg,
+        `${label}.poses[${pIdx}].raw_yaw_deg`,
+      ),
+      folded_yaw_deg: assertFiniteNumber(
+        pose.folded_yaw_deg,
+        `${label}.poses[${pIdx}].folded_yaw_deg`,
+      ),
+      length_m: assertFiniteNumber(
+        pose.length_m,
+        `${label}.poses[${pIdx}].length_m`,
+      ),
+      width_m: assertFiniteNumber(
+        pose.width_m,
+        `${label}.poses[${pIdx}].width_m`,
+      ),
+    };
+  });
+
+  return {
+    source: assertString(raw.source, `${label}.source`),
+    frame: assertNonNegativeInt(raw.frame, `${label}.frame`),
+    arm: assertString(raw.arm, `${label}.arm`),
+    plane_z_m:
+      raw.plane_z_m === null || raw.plane_z_m === undefined
+        ? null
+        : assertFiniteNumber(raw.plane_z_m, `${label}.plane_z_m`),
+    yaw_period_deg: yawPeriodDeg,
+    poses,
+    skipped: parseObjectSkipped(raw.skipped, `${label}.skipped`),
+    coverage: parseObjectCoverage(raw.coverage, `${label}.coverage`),
+  };
+}
+
 function parseObjects(raw: unknown): DistributionObjectEntry[] {
   if (!Array.isArray(raw)) {
     throw new Error("Invalid objects: expected array");
@@ -391,25 +493,11 @@ function parseObjects(raw: unknown): DistributionObjectEntry[] {
         rot6d: parseRot6d(pose.rot6d, `objects[${idx}].poses[${pIdx}].rot6d`),
       };
     });
-    const skipped: DistributionObjectSkipped[] = Array.isArray(item.skipped)
-      ? item.skipped.map((skip, sIdx) => {
-          if (!isPlainObject(skip)) {
-            throw new Error(
-              `Invalid objects[${idx}].skipped[${sIdx}]: expected object`,
-            );
-          }
-          return {
-            episode_index: assertNonNegativeInt(
-              skip.episode_index,
-              `objects[${idx}].skipped[${sIdx}].episode_index`,
-            ),
-            reason: assertString(
-              skip.reason,
-              `objects[${idx}].skipped[${sIdx}].reason`,
-            ),
-          };
-        })
-      : [];
+    const skipped = parseObjectSkipped(item.skipped, `objects[${idx}].skipped`);
+    const objectLayer = parseObjectLayer(
+      item.object_layer,
+      `objects[${idx}].object_layer`,
+    );
 
     return {
       name: assertString(item.name, `objects[${idx}].name`),
@@ -427,6 +515,7 @@ function parseObjects(raw: unknown): DistributionObjectEntry[] {
       poses,
       skipped,
       coverage: parseObjectCoverage(item.coverage, `objects[${idx}].coverage`),
+      ...(objectLayer ? { object_layer: objectLayer } : {}),
     };
   });
 }
@@ -762,5 +851,74 @@ export function parseEpisodeSelection(
   return {
     episodes: [...selected].sort((a, b) => a - b),
     error: null,
+  };
+}
+
+export interface SelectedObjectLayerData {
+  requestedLayer: DistributionObjectLayerKind;
+  resolvedLayer: DistributionObjectLayerKind;
+  fallbackToTool: boolean;
+  arm: string;
+  poses: readonly DistributionObjectPoseBase[];
+  skipped: readonly DistributionObjectSkipped[];
+  coverage: DistributionObjectCoverage;
+  yawPeriodDeg: number;
+  planeZM: number | null;
+  source: string | null;
+  frame: number | null;
+}
+
+export function hasAnyObjectLayer(
+  objects: readonly DistributionObjectEntry[],
+): boolean {
+  return objects.some((obj) => obj.object_layer !== undefined);
+}
+
+export function defaultObjectLayer(
+  objects: readonly DistributionObjectEntry[],
+): DistributionObjectLayerKind {
+  return hasAnyObjectLayer(objects) ? "object" : "tool";
+}
+
+export function resolveEffectiveObjectLayer(
+  objects: readonly DistributionObjectEntry[],
+  preferred: DistributionObjectLayerKind | null,
+): DistributionObjectLayerKind {
+  if (!hasAnyObjectLayer(objects)) return "tool";
+  return preferred ?? "object";
+}
+
+export function selectObjectLayer(
+  objectEntry: DistributionObjectEntry,
+  layer: DistributionObjectLayerKind,
+): SelectedObjectLayerData {
+  if (layer === "object" && objectEntry.object_layer) {
+    const objectLayer = objectEntry.object_layer;
+    return {
+      requestedLayer: "object",
+      resolvedLayer: "object",
+      fallbackToTool: false,
+      arm: objectLayer.arm,
+      poses: objectLayer.poses,
+      skipped: objectLayer.skipped,
+      coverage: objectLayer.coverage,
+      yawPeriodDeg: objectLayer.yaw_period_deg,
+      planeZM: objectLayer.plane_z_m,
+      source: objectLayer.source,
+      frame: objectLayer.frame,
+    };
+  }
+  return {
+    requestedLayer: layer,
+    resolvedLayer: "tool",
+    fallbackToTool: layer === "object",
+    arm: objectEntry.arm,
+    poses: objectEntry.poses,
+    skipped: objectEntry.skipped,
+    coverage: objectEntry.coverage,
+    yawPeriodDeg: objectEntry.yaw_symmetry_deg,
+    planeZM: objectEntry.median_z_m,
+    source: null,
+    frame: null,
   };
 }

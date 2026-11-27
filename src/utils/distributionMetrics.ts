@@ -8,10 +8,13 @@ import type {
   DistributionFile,
   DistributionFrameShares,
   DistributionObjectEntry,
-  DistributionObjectPose,
+  DistributionObjectLayerKind,
+  DistributionObjectPoseBase,
+  DistributionObjectSkipped,
   DistributionSubtaskArmEpisode,
   DistributionSubtaskArmMetrics,
 } from "@/types/distribution.types";
+import { selectObjectLayer } from "@/utils/distributionData";
 
 export interface RecomputedXyCell {
   ix: number;
@@ -24,8 +27,12 @@ export interface RecomputedXyCell {
 }
 
 export interface RecomputedObjectSummary {
-  poses: DistributionObjectPose[];
+  resolvedLayer: DistributionObjectLayerKind;
+  fallbackToTool: boolean;
+  poses: DistributionObjectPoseBase[];
+  skipped: DistributionObjectSkipped[];
   median_z_m: number | null;
+  yaw_period_deg: number;
   xy_bin_m: number;
   yaw_bin_deg: number;
   sparse_threshold: number;
@@ -235,22 +242,31 @@ export function recomputeObjectCoverage(
   objectEntry: DistributionObjectEntry,
   config: DistributionCoverageConfig,
   selectedEpisodes: ReadonlySet<number> | null,
+  layer: DistributionObjectLayerKind = "tool",
 ): RecomputedObjectSummary {
+  const selected = selectObjectLayer(objectEntry, layer);
   const poses = selectedEpisodes
-    ? objectEntry.poses.filter((p) => selectedEpisodes.has(p.episode_index))
-    : objectEntry.poses;
+    ? selected.poses.filter((p) => selectedEpisodes.has(p.episode_index))
+    : [...selected.poses];
+  const skipped = selectedEpisodes
+    ? selected.skipped.filter((s) => selectedEpisodes.has(s.episode_index))
+    : [...selected.skipped];
 
   const xyBinM = config.xy_bin_m;
   const yawBinDeg = config.yaw_bin_deg;
   const numYawBins = Math.max(
     1,
-    Math.ceil(objectEntry.yaw_symmetry_deg / yawBinDeg - 1e-9),
+    Math.ceil(selected.yawPeriodDeg / yawBinDeg - 1e-9),
   );
 
   if (poses.length === 0) {
     return {
+      resolvedLayer: selected.resolvedLayer,
+      fallbackToTool: selected.fallbackToTool,
       poses,
+      skipped,
       median_z_m: null,
+      yaw_period_deg: selected.yawPeriodDeg,
       xy_bin_m: xyBinM,
       yaw_bin_deg: yawBinDeg,
       sparse_threshold: config.sparse_threshold,
@@ -298,8 +314,12 @@ export function recomputeObjectCoverage(
   }
 
   return {
+    resolvedLayer: selected.resolvedLayer,
+    fallbackToTool: selected.fallbackToTool,
     poses,
+    skipped,
     median_z_m: computeMedian(poses.map((p) => p.z_m)),
+    yaw_period_deg: selected.yawPeriodDeg,
     xy_bin_m: xyBinM,
     yaw_bin_deg: yawBinDeg,
     sparse_threshold: config.sparse_threshold,

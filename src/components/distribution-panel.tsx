@@ -11,11 +11,16 @@ import {
   type DistributionGroupSlice,
 } from "@/components/distribution-subtask-trajectory-card";
 import type {
+  DistributionObjectLayerKind,
   DistributionRecomputeResult,
   DistributionStatePayload,
 } from "@/types/distribution.types";
 import { copyTextToClipboard } from "@/utils/clipboard";
-import { parseEpisodeSelection } from "@/utils/distributionData";
+import {
+  hasAnyObjectLayer,
+  parseEpisodeSelection,
+  resolveEffectiveObjectLayer,
+} from "@/utils/distributionData";
 import { recomputeFrameShares } from "@/utils/distributionMetrics";
 
 interface DistributionPanelProps {
@@ -60,6 +65,8 @@ export default function DistributionPanel({
     output?: string;
   } | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [selectedObjectLayer, setSelectedObjectLayer] =
+    useState<DistributionObjectLayerKind | null>(null);
 
   const [groups, setGroups] = useState<EpisodeGroupDraft[]>([
     {
@@ -104,6 +111,10 @@ export default function DistributionPanel({
   useEffect(() => {
     loadState();
   }, [loadState, refreshNonce, localRefreshNonce]);
+
+  useEffect(() => {
+    setSelectedObjectLayer(null);
+  }, [encodedPath]);
 
   const handleCopy = async (key: string, text: string) => {
     const ok = await copyTextToClipboard(text);
@@ -240,6 +251,19 @@ export default function DistributionPanel({
     if (!distribution) return null;
     return recomputeFrameShares(distribution, selectedEpisodes);
   }, [distribution, selectedEpisodes]);
+
+  const hasObjectLayer = useMemo(
+    () => (distribution ? hasAnyObjectLayer(distribution.objects) : false),
+    [distribution],
+  );
+
+  const effectiveObjectLayer = useMemo(
+    () =>
+      distribution
+        ? resolveEffectiveObjectLayer(distribution.objects, selectedObjectLayer)
+        : "tool",
+    [distribution, selectedObjectLayer],
+  );
 
   const addGroup = () => {
     setGroups((prev) => {
@@ -632,15 +656,59 @@ export default function DistributionPanel({
       {/* Block 2: Object Initial Positions */}
       {distribution.objects.length > 0 && (
         <section className="flex flex-col gap-2.5">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-300">
-            {t("dist.sectionObjects")}
-          </h3>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-300">
+              {t("dist.sectionObjects")}
+            </h3>
+            {hasObjectLayer ? (
+              <div
+                role="group"
+                aria-label={t("dist.layerSwitchLabel")}
+                className="inline-flex overflow-hidden rounded border border-white/10"
+              >
+                <button
+                  type="button"
+                  aria-pressed={effectiveObjectLayer === "object"}
+                  onClick={() => setSelectedObjectLayer("object")}
+                  className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                    effectiveObjectLayer === "object"
+                      ? "bg-cyan-500/20 text-cyan-100"
+                      : "bg-[var(--surface-1)]/60 text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  {t("dist.layerObject")}
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={effectiveObjectLayer === "tool"}
+                  onClick={() => setSelectedObjectLayer("tool")}
+                  className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                    effectiveObjectLayer === "tool"
+                      ? "bg-cyan-500/20 text-cyan-100"
+                      : "bg-[var(--surface-1)]/60 text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  {t("dist.layerTool")}
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                <span className="rounded border border-white/10 bg-[var(--surface-1)]/60 px-2 py-0.5 font-medium text-slate-300">
+                  {t("dist.layerTool")}
+                </span>
+                <span className="text-slate-400">
+                  {t("dist.layerObjectUnavailable")}
+                </span>
+              </div>
+            )}
+          </div>
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             {distribution.objects.map((obj) => (
               <DistributionObjectCard
                 key={`${obj.name}-${obj.subtask}-${obj.event}`}
                 encodedPath={encodedPath}
                 objectEntry={obj}
+                layer={effectiveObjectLayer}
                 coverageConfig={distribution.coverage_config}
                 selectedEpisodes={selectedEpisodes}
                 selectedEpisodeList={selectedEpisodeList}

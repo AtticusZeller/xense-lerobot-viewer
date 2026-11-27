@@ -25,6 +25,7 @@ export interface DistributionProvenance {
   episode_filter: number[] | null;
   annotated_episodes: number[];
   skipped_episodes: number[];
+  object_poses_sha256?: string | null;
 }
 
 export interface DistributionCoverageConfig {
@@ -70,7 +71,9 @@ export type DistributionRot6d = [
   number,
 ];
 
-export interface DistributionObjectPose {
+export type DistributionObjectLayerKind = "object" | "tool";
+
+export interface DistributionObjectPoseBase {
   episode_index: number;
   frame: number;
   arm: string;
@@ -79,7 +82,15 @@ export interface DistributionObjectPose {
   z_m: number;
   raw_yaw_deg: number;
   folded_yaw_deg: number;
+}
+
+export interface DistributionObjectPose extends DistributionObjectPoseBase {
   rot6d: DistributionRot6d;
+}
+
+export interface DistributionObjectLayerPose extends DistributionObjectPoseBase {
+  length_m: number;
+  width_m: number;
 }
 
 export interface DistributionObjectSkipped {
@@ -111,6 +122,17 @@ export interface DistributionObjectCoverage {
   bins: DistributionCoverageBin[];
 }
 
+export interface DistributionObjectLayer {
+  source: string;
+  frame: number;
+  arm: string;
+  plane_z_m: number | null;
+  yaw_period_deg: number;
+  poses: DistributionObjectLayerPose[];
+  skipped: DistributionObjectSkipped[];
+  coverage: DistributionObjectCoverage;
+}
+
 export interface DistributionObjectEntry {
   name: string;
   subtask: string;
@@ -121,6 +143,7 @@ export interface DistributionObjectEntry {
   poses: DistributionObjectPose[];
   skipped: DistributionObjectSkipped[];
   coverage: DistributionObjectCoverage;
+  object_layer?: DistributionObjectLayer;
 }
 
 export interface DistributionPose {

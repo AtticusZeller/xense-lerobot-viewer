@@ -110,4 +110,100 @@ describe("distributionMetrics", () => {
     expect(proj!.v).toBeCloseTo(360, 10);
     expect(proj!.depth).toBeCloseTo(1.0, 10);
   });
+
+  it("recomputes object coverage per layer using yaw_period_deg, object poses, skipped filtering, and mixed fallback", () => {
+    const raw = JSON.parse(fs.readFileSync(FIXTURE_PATH, "utf-8"));
+    raw.objects[0].yaw_symmetry_deg = 360.0;
+    raw.objects[0].object_layer = {
+      source: "head_mask",
+      frame: 0,
+      arm: "right",
+      plane_z_m: -0.4254,
+      yaw_period_deg: 180.0,
+      poses: [
+        {
+          episode_index: 0,
+          frame: 0,
+          arm: "right",
+          x_m: 0.96,
+          y_m: 0.23,
+          z_m: -0.4254,
+          raw_yaw_deg: 114.7,
+          folded_yaw_deg: 114.7,
+          length_m: 0.075,
+          width_m: 0.05,
+        },
+      ],
+      skipped: [{ episode_index: 2, reason: "mask touches layout box border" }],
+      coverage: {
+        sample_count: 1,
+        xy_bin_m: 0.05,
+        yaw_bin_deg: 30.0,
+        sparse_threshold: 2,
+        num_yaw_bins: 6,
+        ix_range: [19, 19],
+        iy_range: [4, 4],
+        bins: [],
+      },
+    };
+    const dist = parseDistributionJson(JSON.stringify(raw));
+    const allEps = new Set([0, 2]);
+
+    const objSummary = recomputeObjectCoverage(
+      dist.objects[0],
+      dist.coverage_config,
+      allEps,
+      "object",
+    );
+    expect(objSummary.resolvedLayer).toBe("object");
+    expect(objSummary.fallbackToTool).toBe(false);
+    expect(objSummary.poses).toHaveLength(1);
+    expect(objSummary.poses[0].x_m).toBeCloseTo(0.96, 10);
+    expect(objSummary.skipped).toEqual([
+      { episode_index: 2, reason: "mask touches layout box border" },
+    ]);
+    expect(objSummary.yaw_period_deg).toBe(180);
+    expect(objSummary.num_yaw_bins).toBe(6);
+    expect(objSummary.ix_range).toEqual([19, 19]);
+    expect(objSummary.iy_range).toEqual([4, 4]);
+    expect(objSummary.median_z_m!).toBeCloseTo(-0.4254, 10);
+
+    // Filtering out episode 2 also filters the skipped list to the selection.
+    const ep0Only = recomputeObjectCoverage(
+      dist.objects[0],
+      dist.coverage_config,
+      new Set([0]),
+      "object",
+    );
+    expect(ep0Only.poses).toHaveLength(1);
+    expect(ep0Only.skipped).toEqual([]);
+
+    // Switching to tool layer returns end-effector poses and 360-deg yaw bins.
+    const toolSummary = recomputeObjectCoverage(
+      dist.objects[0],
+      dist.coverage_config,
+      allEps,
+      "tool",
+    );
+    expect(toolSummary.resolvedLayer).toBe("tool");
+    expect(toolSummary.fallbackToTool).toBe(false);
+    expect(toolSummary.poses).toHaveLength(2);
+    expect(toolSummary.skipped).toEqual([]);
+    expect(toolSummary.yaw_period_deg).toBe(360);
+    expect(toolSummary.num_yaw_bins).toBe(12);
+    expect(toolSummary.ix_range).toEqual([19, 20]);
+    expect(toolSummary.iy_range).toEqual([1, 2]);
+
+    // Object without object_layer falls back cleanly to tool layer.
+    const fallbackSummary = recomputeObjectCoverage(
+      dist.objects[1],
+      dist.coverage_config,
+      allEps,
+      "object",
+    );
+    expect(fallbackSummary.resolvedLayer).toBe("tool");
+    expect(fallbackSummary.fallbackToTool).toBe(true);
+    expect(fallbackSummary.poses).toHaveLength(2);
+    expect(fallbackSummary.yaw_period_deg).toBe(180);
+  });
 });

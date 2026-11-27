@@ -912,6 +912,13 @@ export const zh: Record<MessageKey, string> = {
   "dist.colFrames": "帧数",
   "dist.colShare": "占比",
   "dist.sectionObjects": "物体初始位置",
+  "dist.layerSwitchLabel": "位姿图层",
+  "dist.layerObject": "物体层",
+  "dist.layerTool": "末端层",
+  "dist.layerObjectUnavailable":
+    "物体层不可用（当前 distribution.json 未包含物体层数据）",
+  "dist.layerObjectFallback": "该物体无物体层数据，已回退显示末端层",
+  "dist.skippedEpisodes": "已跳过 ({count})",
   "dist.topDownXy": "俯视 XY",
   "dist.sparseThreshold": "稀疏阈值 < {threshold}",
   "dist.noPoses": "当前选择无数据",
