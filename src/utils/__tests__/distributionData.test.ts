@@ -110,6 +110,15 @@ describe("distributionData", () => {
     );
   });
 
+  it("keeps reading an end-effector skipped value that is not a list as empty, as before", () => {
+    const raw = JSON.parse(fs.readFileSync(FIXTURE_PATH, "utf-8"));
+    raw.objects[0].skipped = {};
+    raw.objects[1].skipped = "none";
+    const parsed = parseDistributionJson(JSON.stringify(raw));
+    expect(parsed.objects[0].skipped).toEqual([]);
+    expect(parsed.objects[1].skipped).toEqual([]);
+  });
+
   it("loads old files without object_layer and exposes only the tool layer", () => {
     const raw = fs.readFileSync(FIXTURE_PATH, "utf-8");
     const parsed = parseDistributionJson(raw);

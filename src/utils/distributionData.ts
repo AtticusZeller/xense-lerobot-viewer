@@ -493,7 +493,9 @@ function parseObjects(raw: unknown): DistributionObjectEntry[] {
         rot6d: parseRot6d(pose.rot6d, `objects[${idx}].poses[${pIdx}].rot6d`),
       };
     });
-    const skipped = parseObjectSkipped(item.skipped, `objects[${idx}].skipped`);
+    const skipped = Array.isArray(item.skipped)
+      ? parseObjectSkipped(item.skipped, `objects[${idx}].skipped`)
+      : [];
     const objectLayer = parseObjectLayer(
       item.object_layer,
       `objects[${idx}].object_layer`,
