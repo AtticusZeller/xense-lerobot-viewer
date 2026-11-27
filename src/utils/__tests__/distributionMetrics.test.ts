@@ -10,6 +10,7 @@ import {
   recomputeFrameShares,
   recomputeObjectCoverage,
   recomputeSubtaskArmMetrics,
+  yawGlyph,
 } from "../distributionMetrics";
 
 const FIXTURE_PATH = path.join(
@@ -205,5 +206,24 @@ describe("distributionMetrics", () => {
     expect(fallbackSummary.fallbackToTool).toBe(true);
     expect(fallbackSummary.poses).toHaveLength(2);
     expect(fallbackSummary.yaw_period_deg).toBe(180);
+  });
+
+  it("draws a full-period yaw as one arrow and a shorter period as its headless equivalent directions", () => {
+    const deg = (r: number) => (r * 180) / Math.PI;
+    const full = yawGlyph(30, 360);
+    expect(full.arrowhead).toBe(true);
+    expect(full.anglesRad.map((r) => Math.round(deg(r)))).toEqual([30]);
+
+    const axis = yawGlyph(30, 180);
+    expect(axis.arrowhead).toBe(false);
+    expect(axis.anglesRad.map(deg).map((d) => Math.round(d))).toEqual([
+      30, 210,
+    ]);
+
+    const cross = yawGlyph(10, 90);
+    expect(cross.arrowhead).toBe(false);
+    expect(cross.anglesRad.map(deg).map((d) => Math.round(d))).toEqual([
+      10, 100, 190, 280,
+    ]);
   });
 });

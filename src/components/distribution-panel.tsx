@@ -709,6 +709,7 @@ export default function DistributionPanel({
                 encodedPath={encodedPath}
                 objectEntry={obj}
                 layer={effectiveObjectLayer}
+                layerSwitchAvailable={hasObjectLayer}
                 coverageConfig={distribution.coverage_config}
                 selectedEpisodes={selectedEpisodes}
                 selectedEpisodeList={selectedEpisodeList}

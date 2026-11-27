@@ -331,6 +331,32 @@ export function recomputeObjectCoverage(
   };
 }
 
+export interface YawGlyph {
+  /** Stroke directions from the point, radians CCW from +X. */
+  anglesRad: number[];
+  arrowhead: boolean;
+}
+
+/**
+ * How to draw one folded yaw. A 360° period has a head: one stroke with an
+ * arrowhead. A shorter period has none, so the yaw is drawn as its
+ * `360 / period` equivalent directions without a head (180° is a line through
+ * the point). Otherwise 10° and 170° under a 180° period, which are 20° apart,
+ * render as arrows 160° apart.
+ */
+export function yawGlyph(foldedYawDeg: number, periodDeg: number): YawGlyph {
+  const rad = (foldedYawDeg * Math.PI) / 180;
+  const folds = Math.round(360 / periodDeg);
+  if (!(folds > 1)) return { anglesRad: [rad], arrowhead: true };
+  return {
+    anglesRad: Array.from(
+      { length: folds },
+      (_, k) => rad + (2 * Math.PI * k) / folds,
+    ),
+    arrowhead: false,
+  };
+}
+
 export function computeYawPolarHistogram(
   yawsDeg: readonly number[],
   binDeg = 30,

@@ -19,6 +19,7 @@ import { selectObjectLayer } from "@/utils/distributionData";
 import {
   projectBasePointToPixel,
   recomputeObjectCoverage,
+  yawGlyph,
 } from "@/utils/distributionMetrics";
 import { frameToTime } from "@/utils/subtaskEditor";
 import { mediaTimeFromEpisodeTime } from "@/utils/videoSegments";
@@ -38,6 +39,8 @@ interface DistributionObjectCardProps {
   encodedPath: string;
   objectEntry: DistributionObjectEntry;
   layer: DistributionObjectLayerKind;
+  /** The file carries an object layer, so the panel offers the switch. */
+  layerSwitchAvailable: boolean;
   coverageConfig: DistributionCoverageConfig;
   selectedEpisodes: ReadonlySet<number>;
   selectedEpisodeList: readonly number[];
@@ -58,6 +61,7 @@ function HeadCameraObjectProjection({
   head,
   arm,
   poses,
+  yawPeriodDeg,
   referenceEpisodes,
   colorResolver,
 }: {
@@ -65,6 +69,7 @@ function HeadCameraObjectProjection({
   head: CalibrationHeadFile;
   arm: string;
   poses: readonly DistributionObjectPoseBase[];
+  yawPeriodDeg: number;
   referenceEpisodes: readonly number[];
   colorResolver: EpisodeColorResolver;
 }) {
@@ -178,25 +183,27 @@ function HeadCameraObjectProjection({
       );
       if (!origin) continue;
       const color = colorResolver.colorOf(pose.episode_index);
-      const rad = (pose.folded_yaw_deg * Math.PI) / 180;
-      const tip = projectBasePointToPixel(
-        [
-          pose.x_m + ARROW_LEN_M * Math.cos(rad),
-          pose.y_m + ARROW_LEN_M * Math.sin(rad),
-          pose.z_m,
-        ],
-        armCalib.T_cam_base,
-        head.intrinsics,
-      );
+      const glyph = yawGlyph(pose.folded_yaw_deg, yawPeriodDeg);
 
       ctx.save();
-      if (tip) {
+      for (const rad of glyph.anglesRad) {
+        const tip = projectBasePointToPixel(
+          [
+            pose.x_m + ARROW_LEN_M * Math.cos(rad),
+            pose.y_m + ARROW_LEN_M * Math.sin(rad),
+            pose.z_m,
+          ],
+          armCalib.T_cam_base,
+          head.intrinsics,
+        );
+        if (!tip) continue;
         ctx.strokeStyle = color;
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(origin.u, origin.v);
         ctx.lineTo(tip.u, tip.v);
         ctx.stroke();
+        if (!glyph.arrowhead) continue;
 
         const angle = Math.atan2(tip.v - origin.v, tip.u - origin.u);
         const headLen = 6;
@@ -232,6 +239,7 @@ function HeadCameraObjectProjection({
     imgW,
     poses,
     videoReady,
+    yawPeriodDeg,
   ]);
 
   if (!armCalib) return null;
@@ -290,6 +298,7 @@ export function DistributionObjectCard({
   encodedPath,
   objectEntry,
   layer,
+  layerSwitchAvailable,
   coverageConfig,
   selectedEpisodes,
   selectedEpisodeList,
@@ -385,6 +394,11 @@ export function DistributionObjectCard({
     selected.resolvedLayer === "tool" &&
     hasArmCalibration &&
     positionPoint === "tcp";
+  // The end-effector layer keeps its arrows whatever its yaw symmetry, so a
+  // file without an object layer draws exactly as it did before the switch.
+  const glyphPeriodDeg =
+    selected.resolvedLayer === "object" ? selected.yawPeriodDeg : 360;
+  const showSkipped = layerSwitchAvailable && summary.skipped.length > 0;
   const displayZ =
     summary.median_z_m ??
     (selected.resolvedLayer === "object" ? selected.planeZM : null);
@@ -404,7 +418,7 @@ export function DistributionObjectCard({
         </div>
         <div className="flex items-center gap-3 font-mono text-[11px] text-slate-400 tabular">
           <span>n={summary.poses.length}</span>
-          {summary.skipped.length > 0 && (
+          {showSkipped && (
             <span className="text-amber-300">
               skip={summary.skipped.length}
             </span>
@@ -577,16 +591,9 @@ export function DistributionObjectCard({
               {summary.poses.map((pose) => {
                 const cx = plot.toSvgX(pose.x_m);
                 const cy = plot.toSvgY(pose.y_m);
-                const rad = (pose.folded_yaw_deg * Math.PI) / 180;
-                const tx = cx + plot.arrowPx * Math.cos(rad);
-                const ty = cy - plot.arrowPx * Math.sin(rad);
+                const glyph = yawGlyph(pose.folded_yaw_deg, glyphPeriodDeg);
                 const color = colorResolver.colorOf(pose.episode_index);
-                const angle = Math.atan2(ty - cy, tx - cx);
                 const headLen = 5;
-                const hx1 = tx - headLen * Math.cos(angle - Math.PI / 6);
-                const hy1 = ty - headLen * Math.sin(angle - Math.PI / 6);
-                const hx2 = tx - headLen * Math.cos(angle + Math.PI / 6);
-                const hy2 = ty - headLen * Math.sin(angle + Math.PI / 6);
 
                 return (
                   <g
@@ -595,20 +602,35 @@ export function DistributionObjectCard({
                     onMouseLeave={() => setHovered(null)}
                     className="cursor-pointer"
                   >
-                    <line
-                      x1={cx}
-                      y1={cy}
-                      x2={tx}
-                      y2={ty}
-                      stroke={color}
-                      strokeWidth={1.6}
-                    />
-                    <polyline
-                      points={`${hx1},${hy1} ${tx},${ty} ${hx2},${hy2}`}
-                      fill="none"
-                      stroke={color}
-                      strokeWidth={1.4}
-                    />
+                    {glyph.anglesRad.map((rad) => {
+                      const tx = cx + plot.arrowPx * Math.cos(rad);
+                      const ty = cy - plot.arrowPx * Math.sin(rad);
+                      const angle = Math.atan2(ty - cy, tx - cx);
+                      const hx1 = tx - headLen * Math.cos(angle - Math.PI / 6);
+                      const hy1 = ty - headLen * Math.sin(angle - Math.PI / 6);
+                      const hx2 = tx - headLen * Math.cos(angle + Math.PI / 6);
+                      const hy2 = ty - headLen * Math.sin(angle + Math.PI / 6);
+                      return (
+                        <React.Fragment key={rad}>
+                          <line
+                            x1={cx}
+                            y1={cy}
+                            x2={tx}
+                            y2={ty}
+                            stroke={color}
+                            strokeWidth={1.6}
+                          />
+                          {glyph.arrowhead && (
+                            <polyline
+                              points={`${hx1},${hy1} ${tx},${ty} ${hx2},${hy2}`}
+                              fill="none"
+                              stroke={color}
+                              strokeWidth={1.4}
+                            />
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
                     <circle
                       cx={cx}
                       cy={cy}
@@ -631,13 +653,14 @@ export function DistributionObjectCard({
             head={calibrationHead}
             arm={selected.arm}
             poses={summary.poses}
+            yawPeriodDeg={glyphPeriodDeg}
             referenceEpisodes={selectedEpisodeList}
             colorResolver={colorResolver}
           />
         )}
       </div>
 
-      {summary.skipped.length > 0 && (
+      {showSkipped && (
         <details className="rounded border border-white/10 bg-black/25 px-2.5 py-1.5 text-[11px] text-slate-300">
           <summary className="cursor-pointer select-none font-medium text-amber-200">
             {t("dist.skippedEpisodes", { count: summary.skipped.length })}
