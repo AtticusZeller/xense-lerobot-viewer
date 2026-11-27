@@ -40,9 +40,15 @@ bun dev
 
 Open <http://localhost:3000>. The homepage scans your local LeRobot root and shows everything it finds.
 
+## Review a collection plan
+
+Set `LEROBOT_CHECK_DIR` to a checkout with `lerobot-check collection-plan` and put the reviewed object templates under `<LOCAL_DATASET_ROOT>/.xense-viewer/mask-templates/<org>__<name>@<revision>/`. In an episode, open **COLLECTION → Collection rounds**, choose the number of new rounds and objects per round, then generate. Select each round to preview its targets together. Delete or regenerate an individual pending round without changing the others. Confirm the current generation before downloading the portable plan.
+
+After capture, merge the returned JSON with `lerobot-check collection-plan import-progress` and select **Refresh**. Regenerating the pending batch keeps collected and skipped rounds and avoids collected positions. See the [plan format and recorder contract](https://github.com/AtticusZeller/lerobot-check/blob/main/docs/collection-plan.md).
+
 ## Collection mask guidance
 
-Generate a mask bundle with [`lerobot-check mask-template` and `mask-overlays`](https://github.com/AtticusZeller/lerobot-check/blob/main/README.md#补采目标轮廓). Put the bundle in `<LOCAL_DATASET_ROOT>/.xense-viewer/masks/<org>__<name>@<revision>.json`. Start the viewer as above, open an episode and select **COLLECTION**. Select a placement or test-point number in the table to see its outline on the recorded head image. **Export PNG** includes the selected outline; **Download mask bundle** exports the same data for the capture machine. Regenerate the bundle after changing the calibration or generating new suggestions. CSV and the sampling strategy are unchanged.
+For the independent **Placements & test points** view, generate a mask bundle with [`lerobot-check mask-template` and `mask-overlays`](https://github.com/AtticusZeller/lerobot-check/blob/main/README.md#补采目标轮廓). Put the bundle in `<LOCAL_DATASET_ROOT>/.xense-viewer/masks/<org>__<name>@<revision>.json`. Start the viewer as above, open an episode and select **COLLECTION → Placements & test points**. Select a placement or test-point number in the table to see its outline on the recorded head image. **Export PNG** includes the selected outline; **Download mask bundle** exports the same data for the capture machine. Regenerate the bundle after changing the calibration or generating new suggestions. CSV and the sampling strategy are unchanged.
 
 ### Run the live preview on `xense-robot-flexiv`
 

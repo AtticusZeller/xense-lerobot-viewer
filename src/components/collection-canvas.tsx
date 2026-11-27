@@ -26,7 +26,12 @@ import { mediaTimeFromEpisodeTime } from "@/utils/videoSegments";
 export interface CollectionMarkerEntry {
   key: string;
   kind: "placement" | "test_point";
-  item: SuggestionPointItem;
+  item: Pick<
+    SuggestionPointItem,
+    "object" | "x_m" | "y_m" | "yaw_deg" | "pixel" | "arrow_end_pixel"
+  > &
+    Partial<Pick<SuggestionPointItem, "tier">>;
+  outline?: readonly TargetPolygonVertex[] | null;
   color: string;
   code: string;
 }
@@ -52,6 +57,7 @@ interface CollectionCanvasProps {
   markers: readonly CollectionMarkerEntry[];
   highlightedKey: string | null;
   selectedOutline: readonly TargetPolygonVertex[] | null;
+  calibratedMarkersOnly: boolean;
   onHoverMarker: (key: string | null) => void;
 }
 
@@ -90,6 +96,25 @@ function drawArrow(
   );
   ctx.stroke();
   ctx.restore();
+}
+
+function drawOutline(
+  ctx: CanvasRenderingContext2D,
+  outline: readonly TargetPolygonVertex[],
+  color: string,
+  scale: number,
+) {
+  ctx.beginPath();
+  outline.forEach(([u, v], i) => {
+    if (i === 0) ctx.moveTo(u * scale, v * scale);
+    else ctx.lineTo(u * scale, v * scale);
+  });
+  ctx.closePath();
+  ctx.fillStyle = `${color}45`;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2 * scale;
+  ctx.fill();
+  ctx.stroke();
 }
 
 function drawMarkerShape(
@@ -260,6 +285,7 @@ export const CollectionCanvas = React.forwardRef<
     markers,
     highlightedKey,
     selectedOutline,
+    calibratedMarkersOnly,
     onHoverMarker,
   },
   ref,
@@ -340,24 +366,17 @@ export const CollectionCanvas = React.forwardRef<
         });
       }
 
-      if (
-        selectedOutline &&
-        videoReady &&
-        el?.videoWidth === imgW &&
-        el.videoHeight === imgH
-      ) {
-        ctx.beginPath();
-        selectedOutline.forEach(([u, v], i) => {
-          if (i === 0) ctx.moveTo(u * scale, v * scale);
-          else ctx.lineTo(u * scale, v * scale);
-        });
-        ctx.closePath();
-        ctx.fillStyle = "#22d3ee45";
-        ctx.strokeStyle = "#22d3ee";
-        ctx.lineWidth = 2 * scale;
-        ctx.fill();
-        ctx.stroke();
+      const calibratedFrame =
+        videoReady && el?.videoWidth === imgW && el.videoHeight === imgH;
+      if (calibratedFrame) {
+        if (selectedOutline)
+          drawOutline(ctx, selectedOutline, "#22d3ee", scale);
+        for (const marker of markers) {
+          if (marker.outline)
+            drawOutline(ctx, marker.outline, marker.color, scale);
+        }
       }
+      if (calibratedMarkersOnly && !calibratedFrame) return;
 
       // Draw non-highlighted first, highlighted last so it stays on top.
       for (const entry of markers) {
@@ -370,6 +389,7 @@ export const CollectionCanvas = React.forwardRef<
       }
     },
     [
+      calibratedMarkersOnly,
       dragIndex,
       editPolygon,
       highlightedKey,

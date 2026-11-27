@@ -15,6 +15,7 @@ import {
 } from "@/lib/subtask-annotations-store";
 import type { CalibrationHeadFile } from "@/types/calibration.types";
 import type {
+  CollectionPlan,
   CollectionStatePayload,
   SuggestionsFile,
   TargetPolygonFile,
@@ -25,6 +26,7 @@ import { hasNonZeroDistortion } from "@/utils/calibrationMath";
 import {
   collectionTargetKey,
   parseCollectionMasks,
+  parseCollectionPlan,
   parseSuggestionsJson,
   parseTargetPolygonJson,
   serializeTargetPolygon,
@@ -46,6 +48,7 @@ export interface CollectionArtifactPaths {
   targetsPath: string;
   suggestionsPath: string;
   masksPath: string;
+  planPath: string;
   distributionPath: string;
   headPath: string;
 }
@@ -87,13 +90,14 @@ export async function resolveCollectionArtifactPaths(
   );
 
   const masksPath = path.join(viewerRoot, "masks", `${key}@${revision}.json`);
+  const planPath = path.join(viewerRoot, "plans", `${key}@${revision}.json`);
 
   const [distPaths, calibPaths] = await Promise.all([
     resolveDistributionArtifactPaths(datasetDir, options),
     resolveCalibrationArtifactPaths(datasetDir, options),
   ]);
 
-  for (const target of [targetsPath, suggestionsPath, masksPath]) {
+  for (const target of [targetsPath, suggestionsPath, masksPath, planPath]) {
     if (!isInsideRoot(viewerRoot, target)) {
       throw new Error(`Artifact path escaped ${VIEWER_STORE_DIR}: ${target}`);
     }
@@ -108,6 +112,7 @@ export async function resolveCollectionArtifactPaths(
     targetsPath,
     suggestionsPath,
     masksPath,
+    planPath,
     distributionPath: distPaths.distributionPath,
     headPath: calibPaths.headPath,
   };
@@ -154,6 +159,54 @@ function tryParse<T>(
   }
 }
 
+type PlanResult = {
+  raw: string | null;
+  plan: CollectionPlan | null;
+  error: CollectionStatePayload["planError"];
+};
+
+function checkPlanFile(
+  paths: CollectionArtifactPaths,
+  raw: string | null,
+  headRaw: string | null,
+  head: CalibrationHeadFile | null,
+): PlanResult {
+  if (!raw) return { raw, plan: null, error: raw === null ? null : "invalid" };
+  const parsed = tryParse(raw, parseCollectionPlan).value;
+  if (!parsed) return { raw, plan: null, error: "invalid" };
+  if (
+    parsed.repo_id !== paths.repoId ||
+    parsed.revision !== paths.revision ||
+    !head ||
+    !headRaw ||
+    parsed.calibration_sha256 !==
+      createHash("sha256").update(headRaw).digest("hex")
+  )
+    return { raw, plan: null, error: "stale" };
+  if (
+    parsed.camera !== head.camera ||
+    parsed.image_size.some((n, i) => n !== head.image_size[i])
+  ) {
+    return { raw, plan: null, error: "imageMismatch" };
+  }
+  return { raw, plan: parsed, error: null };
+}
+
+export async function loadCollectionPlanFile(
+  paths: CollectionArtifactPaths,
+): Promise<PlanResult> {
+  const [raw, headRaw] = await Promise.all([
+    readFileIfExists(paths.planPath),
+    readFileIfExists(paths.headPath),
+  ]);
+  return checkPlanFile(
+    paths,
+    raw,
+    headRaw,
+    tryParse(headRaw, parseCalibrationHeadJson).value,
+  );
+}
+
 export async function loadCollectionState(
   datasetDir: string,
   options: {
@@ -162,13 +215,14 @@ export async function loadCollectionState(
   } = {},
 ): Promise<CollectionStatePayload> {
   const paths = await resolveCollectionArtifactPaths(datasetDir, options);
-  const [targetsRaw, suggestionsRaw, distRaw, headRaw, masksRaw] =
+  const [targetsRaw, suggestionsRaw, distRaw, headRaw, masksRaw, planRaw] =
     await Promise.all([
       readFileIfExists(paths.targetsPath),
       readFileIfExists(paths.suggestionsPath),
       readFileIfExists(paths.distributionPath),
       readFileIfExists(paths.headPath),
       readFileIfExists(paths.masksPath),
+      readFileIfExists(paths.planPath),
     ]);
 
   const parsedTargets = tryParse<TargetPolygonFile>(
@@ -240,6 +294,7 @@ export async function loadCollectionState(
     }
   }
 
+  const planFile = checkPlanFile(paths, planRaw, headRaw, parsedHead.value);
   const suggestCli = buildSuggestCommand(datasetDir, paths.repoId, {
     count: 10,
     testPerTier: 3,
@@ -270,6 +325,8 @@ export async function loadCollectionState(
     suggestionsError: parsedSuggestions.error,
     masks: masksError ? null : masks,
     masksError,
+    plan: planFile.plan,
+    planError: planFile.error,
     calibration: {
       exists: headRaw !== null && parsedHead.value !== null,
       hasNonZeroDistortion: hasNonZeroDistortion(parsedHead.value?.intrinsics),
@@ -279,6 +336,7 @@ export async function loadCollectionState(
       exists: distRaw !== null && parsedDist.value !== null,
       positionPoint: parsedDist.value?.provenance.position_point ?? null,
       annotatedEpisodes: parsedDist.value?.provenance.annotated_episodes ?? [],
+      objects: parsedDist.value?.objects.map(({ name }) => name) ?? [],
       error: parsedDist.error,
     },
     cli: {

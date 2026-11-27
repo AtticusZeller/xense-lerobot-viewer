@@ -1,6 +1,9 @@
 import type {
   CollectionMaskBundle,
   CollectionMaskTarget,
+  CollectionPlan,
+  CollectionPlanRound,
+  CollectionPlanTarget,
   SuggestionObjectGeometry,
   SuggestionPointItem,
   SuggestionsFile,
@@ -575,6 +578,242 @@ export function parseCollectionMasks(rawText: string): CollectionMaskBundle {
     ),
     sources: value.sources,
     targets,
+  };
+}
+
+export function isPlanInteger(value: unknown, minimum = 1): value is number {
+  return (
+    typeof value === "number" && Number.isSafeInteger(value) && value >= minimum
+  );
+}
+
+export function isPlanId(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(value)
+  );
+}
+
+function isPlanText(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isSha(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
+}
+
+function planCheck(condition: unknown, field: string): asserts condition {
+  if (!condition) throw new Error(`Invalid collection plan: ${field}`);
+}
+
+function parsePlanTarget(
+  target: unknown,
+  size: [number, number],
+  multi: boolean,
+): CollectionPlanTarget {
+  planCheck(
+    isPlainObject(target) && target.kind === "placement",
+    "target kind",
+  );
+  const { object, arm, index, reason } = target;
+  planCheck(
+    isPlanText(object) && isPlanText(arm) && isPlanInteger(index),
+    "target identity",
+  );
+  const yaw = assertFiniteNumber(target.yaw_deg, "yaw_deg");
+  const period = assertFiniteNumber(
+    target.yaw_symmetry_deg,
+    "yaw_symmetry_deg",
+  );
+  planCheck(
+    period > 0 && period <= 360 && yaw >= 0 && yaw < period,
+    "target yaw",
+  );
+  const inFrame = ([x, y]: TargetPolygonVertex) =>
+    x >= 0 && y >= 0 && x < size[0] && y < size[1];
+  const pixel = parsePoint2(target.pixel, "pixel");
+  planCheck(inFrame(pixel), "target pixel");
+  const base = {
+    kind: "placement" as const,
+    object,
+    arm,
+    index,
+    pixel,
+    x_m: assertFiniteNumber(target.x_m, "x_m"),
+    y_m: assertFiniteNumber(target.y_m, "y_m"),
+    z_m: assertFiniteNumber(target.z_m, "z_m"),
+    yaw_deg: yaw,
+    yaw_symmetry_deg: period,
+    arrow_end_pixel: parsePoint2(target.arrow_end_pixel, "arrow_end_pixel"),
+  };
+  if (target.outline === null) {
+    planCheck(
+      !multi && isPlanText(reason) && target.outline_plane_z_m === null,
+      "unprojectable target",
+    );
+    return { ...base, outline: null, reason, outline_plane_z_m: null };
+  }
+  planCheck(
+    Array.isArray(target.outline) &&
+      target.outline.length >= 3 &&
+      reason === null,
+    "target outline",
+  );
+  const outline = target.outline.map((point: unknown) =>
+    parsePoint2(point, "outline"),
+  );
+  planCheck(outline.every(inFrame), "target outline bounds");
+  return {
+    ...base,
+    outline,
+    reason,
+    outline_plane_z_m: assertFiniteNumber(
+      target.outline_plane_z_m,
+      "outline_plane_z_m",
+    ),
+  };
+}
+
+function parsePlanSettings(value: unknown): CollectionPlan["settings"] {
+  planCheck(isPlainObject(value), "settings");
+  planCheck(
+    isPlanInteger(value.round_count) &&
+      isPlanInteger(value.objects_per_round) &&
+      isPlanInteger(value.seed, 0),
+    "settings counts and seed",
+  );
+  planCheck(
+    assertFiniteNumber(value.min_revisit_distance_m, "min_revisit_distance_m") >
+      0 && isPlanText(value.region_source),
+    "settings region",
+  );
+  return value as CollectionPlan["settings"];
+}
+
+function parsePlanRounds(
+  value: Record<string, unknown>,
+  size: [number, number],
+  settings: CollectionPlan["settings"],
+): CollectionPlanRound[] {
+  planCheck(
+    Array.isArray(value.rounds) &&
+      isPlanInteger(value.next_round_id) &&
+      isPlanInteger(value.source_episode_count, 0),
+    "rounds and sequence",
+  );
+  const { next_round_id: nextId, source_episode_count: baseline } = value;
+  const ids = new Set<number>();
+  const episodes = new Set<number>();
+  return value.rounds.map((round: unknown) => {
+    planCheck(
+      isPlainObject(round) &&
+        isPlanInteger(round.id) &&
+        round.id < nextId &&
+        !ids.has(round.id),
+      "round id",
+    );
+    ids.add(round.id);
+    planCheck(isSha(round.mask_bundle_sha256), "round mask bundle hash");
+    const { status, episode_index: episode, targets: rawTargets } = round;
+    if (status === "collected") {
+      planCheck(
+        isPlanInteger(episode, baseline) && !episodes.has(episode),
+        "collected episode index",
+      );
+      episodes.add(episode);
+    } else {
+      planCheck(
+        (status === "pending" || status === "skipped") && episode === null,
+        "round status and episode index",
+      );
+    }
+    planCheck(
+      Array.isArray(rawTargets) && rawTargets.length > 0,
+      "round targets",
+    );
+    const targets = rawTargets.map((target: unknown) =>
+      parsePlanTarget(target, size, rawTargets.length > 1),
+    );
+    planCheck(
+      status !== "pending" || targets.length === settings.objects_per_round,
+      "pending round size",
+    );
+    planCheck(
+      new Set(targets.map(({ object }) => object)).size === targets.length,
+      "duplicate round object",
+    );
+    return {
+      id: round.id,
+      mask_bundle_sha256: round.mask_bundle_sha256,
+      status,
+      episode_index: episode,
+      targets,
+    };
+  });
+}
+
+export function parseCollectionPlan(raw: string): CollectionPlan {
+  const value: unknown = JSON.parse(raw);
+  planCheck(
+    isPlainObject(value) &&
+      value.format === "lerobot-collection-plan" &&
+      value.version === 1,
+    "format or version",
+  );
+  planCheck(
+    isPlanId(value.plan_id) && isPlanInteger(value.generation),
+    "plan id and generation",
+  );
+  planCheck(
+    isPlanText(value.repo_id) &&
+      isPlanText(value.revision) &&
+      isPlanText(value.camera),
+    "dataset and camera identity",
+  );
+  planCheck(
+    value.camera_serial === null || isPlanText(value.camera_serial),
+    "camera serial",
+  );
+  planCheck(
+    isSha(value.calibration_sha256) && isSha(value.mask_bundle_sha256),
+    "hashes",
+  );
+  const size = parsePoint2(value.image_size, "image_size");
+  planCheck(
+    size.every((n) => isPlanInteger(n)),
+    "image size",
+  );
+  planCheck(
+    isPlainObject(value.excluded_objects) &&
+      Object.entries(value.excluded_objects).every(
+        ([key, reason]) => isPlanText(key) && isPlanText(reason),
+      ),
+    "excluded objects",
+  );
+  const settings = parsePlanSettings(value.settings);
+  const rounds = parsePlanRounds(value, size, settings);
+  planCheck(
+    isPlanInteger(value.next_round_id) &&
+      isPlanInteger(value.source_episode_count, 0),
+    "round sequence",
+  );
+  return {
+    format: value.format,
+    version: value.version,
+    plan_id: value.plan_id,
+    generation: value.generation,
+    next_round_id: value.next_round_id,
+    source_episode_count: value.source_episode_count,
+    repo_id: value.repo_id,
+    revision: value.revision,
+    camera: value.camera,
+    camera_serial: value.camera_serial,
+    image_size: size,
+    calibration_sha256: value.calibration_sha256,
+    mask_bundle_sha256: value.mask_bundle_sha256,
+    settings,
+    rounds,
+    excluded_objects: value.excluded_objects as Record<string, string>,
   };
 }
 

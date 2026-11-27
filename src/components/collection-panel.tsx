@@ -14,8 +14,10 @@ import {
   type CollectionCanvasHandle,
   type CollectionMarkerEntry,
 } from "@/components/collection-canvas";
+import CollectionPlanRounds from "@/components/collection-plan-rounds";
 import type { CalibrationEpisodeMediaPayload } from "@/types/calibration.types";
 import type {
+  CollectionPlanAction,
   CollectionStatePayload,
   CollectionSuggestResult,
   TargetPolygonVertex,
@@ -90,6 +92,12 @@ export default function CollectionPanel({
   const [testPerTier, setTestPerTier] = useState(3);
   const [runningSuggest, setRunningSuggest] = useState(false);
   const [recomputingDist, setRecomputingDist] = useState(false);
+  const [workspaceMode, setWorkspaceMode] = useState<"plan" | "points">("plan");
+  const [newRoundCount, setNewRoundCount] = useState<number | null>(null);
+  const [objectsPerRound, setObjectsPerRound] = useState<number | null>(null);
+  const [selectedRoundId, setSelectedRoundId] = useState<number | null>(null);
+  const [reviewedKey, setReviewedKey] = useState<string | null>(null);
+  const [runningPlan, setRunningPlan] = useState(false);
 
   const [banner, setBanner] = useState<{
     kind: "info" | "ok" | "error";
@@ -111,43 +119,60 @@ export default function CollectionPanel({
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
-  const fetchState = useCallback(async () => {
-    if (!encodedPath) {
-      setLoading(false);
-      setState(null);
-      return;
-    }
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const res = await fetch(`/api/local-datasets/${encodedPath}/collection`, {
-        cache: "no-store",
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setLoadError(
-          String((body as { error?: string }).error ?? `HTTP ${res.status}`),
-        );
+  const plan = state?.plan;
+  const round =
+    plan?.rounds.find(({ id }) => id === selectedRoundId) ??
+    plan?.rounds[0] ??
+    null;
+  const reviewKey = plan ? `${plan.plan_id}:${plan.generation}` : null;
+  const camera =
+    workspaceMode === "plan" ? (plan?.camera ?? state?.camera) : state?.camera;
+
+  const fetchState = useCallback(
+    async (keepDraft = false) => {
+      if (!encodedPath) {
+        setLoading(false);
         setState(null);
         return;
       }
-      const next = body as CollectionStatePayload;
-      setState(next);
-      setDraftPolygon(next.targets?.polygon ?? []);
-      setPolygonDirty(false);
-      if (next.distribution.annotatedEpisodes.length > 0) {
-        setRefEpisode((prev) =>
-          prev >= 0 && prev < totalEpisodes
-            ? prev
-            : next.distribution.annotatedEpisodes[0],
+      if (!keepDraft) setLoading(true);
+      setLoadError(null);
+      try {
+        const res = await fetch(
+          `/api/local-datasets/${encodedPath}/collection`,
+          {
+            cache: "no-store",
+          },
         );
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setLoadError(
+            String((body as { error?: string }).error ?? `HTTP ${res.status}`),
+          );
+          setState(null);
+          return;
+        }
+        const next = body as CollectionStatePayload;
+        setState(next);
+        if (!keepDraft) {
+          setDraftPolygon(next.targets?.polygon ?? []);
+          setPolygonDirty(false);
+        }
+        if (next.distribution.annotatedEpisodes.length > 0) {
+          setRefEpisode((prev) =>
+            prev >= 0 && prev < totalEpisodes
+              ? prev
+              : next.distribution.annotatedEpisodes[0],
+          );
+        }
+      } catch (err) {
+        setLoadError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      setLoadError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [encodedPath, totalEpisodes]);
+    },
+    [encodedPath, totalEpisodes],
+  );
 
   useEffect(() => {
     setBanner(null);
@@ -156,13 +181,13 @@ export default function CollectionPanel({
 
   // Fetch head-camera frame metadata for selected reference episode.
   useEffect(() => {
-    if (!encodedPath || !state) return;
+    if (!encodedPath || !camera) return;
     let cancelled = false;
     setMediaLoading(true);
     setMediaError(null);
     const params = new URLSearchParams({
       episode: String(refEpisode),
-      camera: state.camera,
+      camera,
       includeTcp: "0",
     });
     fetch(`/api/local-datasets/${encodedPath}/calibration/episode?${params}`, {
@@ -191,7 +216,7 @@ export default function CollectionPanel({
     return () => {
       cancelled = true;
     };
-  }, [encodedPath, refEpisode, state]);
+  }, [encodedPath, refEpisode, camera]);
 
   const objectList = useMemo(() => {
     if (!state?.suggestions) return [];
@@ -259,6 +284,105 @@ export default function CollectionPanel({
     visibleObjects,
     visibleTiers,
   ]);
+
+  const plansObjects = state?.distribution.objects ?? [];
+  const planColorOf = (name: string) =>
+    OBJECT_COLORS[
+      Math.max(0, plansObjects.indexOf(name)) % OBJECT_COLORS.length
+    ];
+  const planMarkers: CollectionMarkerEntry[] =
+    round?.targets.map((item, index) => ({
+      key: collectionTargetKey("placement", item),
+      kind: "placement",
+      item,
+      outline: item.outline,
+      code: String(index + 1),
+      color: planColorOf(item.object),
+    })) ?? [];
+
+  const handlePlanEdit = async (edit: CollectionPlanAction) => {
+    if (!encodedPath || !state) return;
+    if (
+      edit.action === "delete" &&
+      !window.confirm(t("collect.plan.deleteConfirm", { id: edit.roundId }))
+    )
+      return;
+    if (
+      edit.action !== "delete" &&
+      polygonDirty &&
+      !(await handleSavePolygon())
+    )
+      return;
+    setRunningPlan(true);
+    setBanner(null);
+    try {
+      const res = await fetch(
+        `/api/local-datasets/${encodedPath}/collection/plan`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...edit,
+            planId: plan?.plan_id ?? null,
+            generation: plan?.generation ?? null,
+          }),
+        },
+      );
+      const result = (await res.json()) as {
+        error?: string;
+        command?: string;
+        configured?: boolean;
+      };
+      if (!res.ok) {
+        setBanner({
+          kind: result.configured === false ? "info" : "error",
+          title: result.error ?? `HTTP ${res.status}`,
+          command: result.command,
+        });
+        return;
+      }
+      setReviewedKey(null);
+      setSelectedRoundId(
+        edit.action === "replace" ? (plan?.next_round_id ?? null) : null,
+      );
+      await fetchState(true);
+      setBanner({ kind: "ok", title: t("collect.plan.updated") });
+    } catch (err) {
+      setBanner({ kind: "error", title: String(err) });
+    } finally {
+      setRunningPlan(false);
+    }
+  };
+
+  const handleDownloadPlan = async () => {
+    if (!encodedPath || !plan || reviewedKey !== reviewKey) return;
+    try {
+      const params = new URLSearchParams({
+        planId: plan.plan_id,
+        generation: String(plan.generation),
+      });
+      const res = await fetch(
+        `/api/local-datasets/${encodedPath}/collection/plan?${params}`,
+        { cache: "no-store" },
+      );
+      if (!res.ok) {
+        const { error } = await res.json();
+        setBanner({
+          kind: "error",
+          title: String(error ?? `HTTP ${res.status}`),
+        });
+        return;
+      }
+      const slug = plan.repo_id.replace(/\//g, "__");
+      triggerDownload(
+        `${slug}@${plan.revision}.plan.json`,
+        URL.createObjectURL(await res.blob()),
+        true,
+      );
+    } catch (err) {
+      setBanner({ kind: "error", title: String(err) });
+    }
+  };
 
   const handleCopy = async (key: string, text: string) => {
     const ok = await copyTextToClipboard(text);
@@ -477,9 +601,15 @@ export default function CollectionPanel({
   const handleExportPng = () => {
     if (!state || !canvasRef.current) return;
     const dataUrl = canvasRef.current.exportAnnotatedPngDataUrl({
-      title: `${state.repoId} · ep ${refEpisode}`,
-      objects: objectList.filter((o) => visibleObjects[o.name] !== false),
-      note: state.suggestions?.provenance.note,
+      title: `${state.repoId} · ep ${refEpisode}${workspaceMode === "plan" && round ? ` · ${t("collect.plan.round", { id: round.id })}` : ""}`,
+      objects:
+        workspaceMode === "plan"
+          ? planMarkers.map(({ item, color }) => ({ name: item.object, color }))
+          : objectList.filter((o) => visibleObjects[o.name] !== false),
+      note:
+        workspaceMode === "points"
+          ? state.suggestions?.provenance.note
+          : undefined,
     });
     if (!dataUrl) return;
     const slug = state.repoId.replace(/\//g, "__");
@@ -533,6 +663,17 @@ export default function CollectionPanel({
   const needsDistRecompute =
     state.calibration.exists && state.distribution.positionPoint === "tcp";
 
+  const planMode = workspaceMode === "plan";
+  const availableObjects = plansObjects.length;
+  const roundCount = newRoundCount ?? plan?.settings.round_count ?? 10;
+  const perRound = Math.min(
+    objectsPerRound ?? plan?.settings.objects_per_round ?? 1,
+    Math.max(1, availableObjects),
+  );
+  const planEditable = !runningPlan && !state.planError;
+  const actionClass =
+    "rounded border border-white/15 px-2.5 py-1.5 text-slate-200 hover:border-cyan-400/50 disabled:opacity-40";
+
   return (
     <div className="flex flex-col gap-3 pb-6">
       {/* Header & primary action bar */}
@@ -557,45 +698,156 @@ export default function CollectionPanel({
           </div>
         </div>
 
-        {/* Suggest parameters & Run */}
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          <label className="inline-flex items-center gap-1 text-slate-300">
-            <span>{t("collect.countLabel")}</span>
-            <input
-              type="number"
-              min={1}
-              max={500}
-              value={countPerObject}
-              onChange={(e) =>
-                setCountPerObject(Math.max(1, Number(e.target.value) || 1))
-              }
-              className="w-14 rounded border border-white/10 bg-black/40 px-1.5 py-1 text-center font-mono text-slate-100"
-            />
-          </label>
-
-          <label className="inline-flex items-center gap-1 text-slate-300">
-            <span>{t("collect.testPerTierLabel")}</span>
-            <input
-              type="number"
-              min={0}
-              max={100}
-              value={testPerTier}
-              onChange={(e) =>
-                setTestPerTier(Math.max(0, Number(e.target.value) || 0))
-              }
-              className="w-12 rounded border border-white/10 bg-black/40 px-1.5 py-1 text-center font-mono text-slate-100"
-            />
-          </label>
-
+        <div className="flex flex-wrap items-center gap-1">
           <button
             type="button"
-            disabled={runningSuggest}
-            onClick={() => void handleRunSuggest()}
-            className="rounded-md border border-cyan-400/40 bg-cyan-500/15 px-3 py-1.5 font-medium text-cyan-100 hover:bg-cyan-500/25 disabled:opacity-50"
+            className={actionClass}
+            aria-pressed={planMode}
+            onClick={() => setWorkspaceMode("plan")}
           >
-            {runningSuggest ? t("collect.generating") : t("collect.generate")}
+            {t("collect.plan.mode")}
           </button>
+          <button
+            type="button"
+            className={actionClass}
+            aria-pressed={!planMode}
+            onClick={() => setWorkspaceMode("points")}
+          >
+            {t("collect.plan.suggestions")}
+          </button>
+        </div>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {planMode ? (
+            <>
+              <label className="inline-flex items-center gap-1 text-slate-300">
+                {t("collect.plan.roundCount")}
+                <input
+                  type="number"
+                  min={1}
+                  max={500}
+                  value={roundCount}
+                  onChange={(e) =>
+                    setNewRoundCount(
+                      Math.min(
+                        500,
+                        Math.max(1, Math.trunc(Number(e.target.value) || 1)),
+                      ),
+                    )
+                  }
+                  className="w-14 rounded border border-white/10 bg-black/40 px-1.5 py-1 text-center"
+                />
+              </label>
+              <label className="inline-flex items-center gap-1 text-slate-300">
+                {t("collect.plan.objectsPerRound")}
+                <select
+                  value={perRound}
+                  disabled={!availableObjects}
+                  onChange={(e) => setObjectsPerRound(Number(e.target.value))}
+                  className="rounded border border-white/10 bg-[var(--surface-1)] px-1.5 py-1"
+                >
+                  {Array.from(
+                    { length: Math.max(1, availableObjects) },
+                    (_, i) => (
+                      <option key={i + 1} value={i + 1}>
+                        {i + 1}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </label>
+              <button
+                type="button"
+                disabled={
+                  !planEditable ||
+                  !availableObjects ||
+                  !state.calibration.exists
+                }
+                className={`${actionClass} bg-cyan-500/15`}
+                onClick={() =>
+                  void handlePlanEdit({
+                    action: "generate",
+                    roundCount,
+                    objectsPerRound: perRound,
+                  })
+                }
+              >
+                {runningPlan
+                  ? t("collect.generating")
+                  : t(
+                      plan
+                        ? "collect.plan.regenerate"
+                        : "collect.plan.generate",
+                    )}
+              </button>
+              {plan && (
+                <label className="inline-flex items-center gap-1 text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={reviewedKey === reviewKey}
+                    disabled={runningPlan}
+                    onChange={(e) =>
+                      setReviewedKey(e.target.checked ? reviewKey : null)
+                    }
+                    className="accent-cyan-400"
+                  />
+                  {t("collect.plan.reviewed")}
+                </label>
+              )}
+              <button
+                type="button"
+                className={actionClass}
+                disabled={
+                  runningPlan ||
+                  !plan?.rounds.some((item) => item.status === "pending") ||
+                  reviewedKey !== reviewKey
+                }
+                onClick={() => void handleDownloadPlan()}
+              >
+                {t("collect.plan.download")}
+              </button>
+            </>
+          ) : (
+            <>
+              <label className="inline-flex items-center gap-1 text-slate-300">
+                <span>{t("collect.countLabel")}</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={500}
+                  value={countPerObject}
+                  onChange={(e) =>
+                    setCountPerObject(Math.max(1, Number(e.target.value) || 1))
+                  }
+                  className="w-14 rounded border border-white/10 bg-black/40 px-1.5 py-1 text-center font-mono text-slate-100"
+                />
+              </label>
 
+              <label className="inline-flex items-center gap-1 text-slate-300">
+                <span>{t("collect.testPerTierLabel")}</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={testPerTier}
+                  onChange={(e) =>
+                    setTestPerTier(Math.max(0, Number(e.target.value) || 0))
+                  }
+                  className="w-12 rounded border border-white/10 bg-black/40 px-1.5 py-1 text-center font-mono text-slate-100"
+                />
+              </label>
+
+              <button
+                type="button"
+                disabled={runningSuggest}
+                onClick={() => void handleRunSuggest()}
+                className="rounded-md border border-cyan-400/40 bg-cyan-500/15 px-3 py-1.5 font-medium text-cyan-100 hover:bg-cyan-500/25 disabled:opacity-50"
+              >
+                {runningSuggest
+                  ? t("collect.generating")
+                  : t("collect.generate")}
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={handleExportPng}
@@ -604,16 +856,18 @@ export default function CollectionPanel({
             {t("collect.exportPng")}
           </button>
 
-          <button
-            type="button"
-            disabled={!state.suggestions}
-            onClick={handleExportCsv}
-            className="rounded-md border border-white/10 bg-[var(--surface-1)]/60 px-2.5 py-1.5 text-slate-200 hover:border-cyan-400/40 disabled:opacity-40"
-          >
-            {t("collect.exportCsv")}
-          </button>
+          {!planMode && (
+            <button
+              type="button"
+              disabled={!state.suggestions}
+              onClick={handleExportCsv}
+              className="rounded-md border border-white/10 bg-[var(--surface-1)]/60 px-2.5 py-1.5 text-slate-200 hover:border-cyan-400/40 disabled:opacity-40"
+            >
+              {t("collect.exportCsv")}
+            </button>
+          )}
 
-          {state.masks && (
+          {!planMode && state.masks && (
             <button
               type="button"
               onClick={handleExportMasks}
@@ -625,7 +879,8 @@ export default function CollectionPanel({
 
           <button
             type="button"
-            onClick={() => void fetchState()}
+            disabled={runningPlan}
+            onClick={() => void fetchState(true)}
             className="rounded-md border border-white/10 bg-[var(--surface-1)]/60 px-2.5 py-1.5 text-slate-300 hover:border-cyan-400/40"
           >
             {t("dist.refresh")}
@@ -633,6 +888,18 @@ export default function CollectionPanel({
         </div>
       </div>
 
+      {planMode && (state.planError || (plan && !plan.camera_serial)) && (
+        <p
+          role="alert"
+          className="rounded border border-amber-400/40 bg-amber-500/10 px-4 py-2 text-xs text-amber-200"
+        >
+          {t(
+            state.planError
+              ? `collect.plan.${state.planError}`
+              : "collect.plan.noSerial",
+          )}
+        </p>
+      )}
       {/* State notices */}
       {!state.calibration.exists && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-400/40 bg-amber-500/10 px-4 py-2 text-xs text-amber-200">
@@ -810,7 +1077,7 @@ export default function CollectionPanel({
           {/* Interactive head camera canvas */}
           <CollectionCanvas
             ref={canvasRef}
-            imageSize={state.imageSize}
+            imageSize={planMode && plan ? plan.image_size : state.imageSize}
             video={episodeMedia?.video ?? null}
             fps={episodeMedia?.fps ?? fps}
             loading={mediaLoading}
@@ -819,211 +1086,241 @@ export default function CollectionPanel({
             showPolygon={showPolygon}
             editPolygon={editPolygon}
             onPolygonChange={handlePolygonChange}
-            markers={visibleMarkers}
-            highlightedKey={highlightedKey ?? selected?.key ?? null}
-            selectedOutline={selectedMask?.outline ?? null}
+            markers={planMode ? planMarkers : visibleMarkers}
+            highlightedKey={
+              planMode
+                ? highlightedKey
+                : (highlightedKey ?? selected?.key ?? null)
+            }
+            selectedOutline={planMode ? null : (selectedMask?.outline ?? null)}
+            calibratedMarkersOnly={planMode}
             onHoverMarker={setHighlightedKey}
           />
-          <p role="status" className="text-[11px] text-slate-300">
-            {state.masksError
-              ? t(`collect.masks.${state.masksError}`)
-              : !state.masks
-                ? t("collect.masks.missing")
-                : !selected
-                  ? t("collect.masks.select")
-                  : selectedMask?.reason
-                    ? t("collect.masks.unavailable", {
-                        target: `${selected.item.object} ${selected.code}`,
-                        reason: selectedMask.reason,
-                      })
-                    : t("collect.masks.active", {
-                        target: `${selected.item.object} ${selected.code}`,
-                      })}
-          </p>
+          {!planMode && (
+            <>
+              <p role="status" className="text-[11px] text-slate-300">
+                {state.masksError
+                  ? t(`collect.masks.${state.masksError}`)
+                  : !state.masks
+                    ? t("collect.masks.missing")
+                    : !selected
+                      ? t("collect.masks.select")
+                      : selectedMask?.reason
+                        ? t("collect.masks.unavailable", {
+                            target: `${selected.item.object} ${selected.code}`,
+                            reason: selectedMask.reason,
+                          })
+                        : t("collect.masks.active", {
+                            target: `${selected.item.object} ${selected.code}`,
+                          })}
+              </p>
 
-          {/* Layer & Object toggles */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/10 pt-2.5 text-[11px]">
-            <label className="inline-flex cursor-pointer items-center gap-1.5 text-slate-300">
-              <input
-                type="checkbox"
-                checked={showPolygon}
-                onChange={(e) => setShowPolygon(e.target.checked)}
-                className="accent-cyan-400"
-              />
-              {t("collect.layerPolygon")}
-            </label>
-            <label className="inline-flex cursor-pointer items-center gap-1.5 text-slate-300">
-              <input
-                type="checkbox"
-                checked={showPlacements}
-                onChange={(e) => setShowPlacements(e.target.checked)}
-                className="accent-cyan-400"
-              />
-              ● {t("collect.layerPlacements")}
-            </label>
-            {TEST_TIERS.map((tier) => (
-              <label
-                key={tier}
-                className="inline-flex cursor-pointer items-center gap-1.5 text-slate-300"
-              >
-                <input
-                  type="checkbox"
-                  checked={visibleTiers[tier] !== false}
-                  onChange={(e) =>
-                    setVisibleTiers((prev) => ({
-                      ...prev,
-                      [tier]: e.target.checked,
-                    }))
-                  }
-                  className="accent-cyan-400"
-                />
-                {tier === "dense"
-                  ? `▲ ${t("collect.tierDense")}`
-                  : tier === "edge"
-                    ? `◆ ${t("collect.tierEdge")}`
-                    : `■ ${t("collect.tierEmpty")}`}
-              </label>
-            ))}
-
-            {objectList.length > 0 && (
-              <div className="flex flex-wrap items-center gap-3 ml-auto">
-                {objectList.map((obj) => (
+              {/* Layer & Object toggles */}
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/10 pt-2.5 text-[11px]">
+                <label className="inline-flex cursor-pointer items-center gap-1.5 text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={showPolygon}
+                    onChange={(e) => setShowPolygon(e.target.checked)}
+                    className="accent-cyan-400"
+                  />
+                  {t("collect.layerPolygon")}
+                </label>
+                <label className="inline-flex cursor-pointer items-center gap-1.5 text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={showPlacements}
+                    onChange={(e) => setShowPlacements(e.target.checked)}
+                    className="accent-cyan-400"
+                  />
+                  ● {t("collect.layerPlacements")}
+                </label>
+                {TEST_TIERS.map((tier) => (
                   <label
-                    key={obj.name}
-                    className="inline-flex cursor-pointer items-center gap-1.5"
+                    key={tier}
+                    className="inline-flex cursor-pointer items-center gap-1.5 text-slate-300"
                   >
                     <input
                       type="checkbox"
-                      checked={visibleObjects[obj.name] !== false}
+                      checked={visibleTiers[tier] !== false}
                       onChange={(e) =>
-                        setVisibleObjects((prev) => ({
+                        setVisibleTiers((prev) => ({
                           ...prev,
-                          [obj.name]: e.target.checked,
+                          [tier]: e.target.checked,
                         }))
                       }
                       className="accent-cyan-400"
                     />
-                    <span
-                      className="inline-block h-2.5 w-2.5 rounded-full"
-                      style={{ backgroundColor: obj.color }}
-                    />
-                    <span className="font-mono text-slate-200">{obj.name}</span>
+                    {tier === "dense"
+                      ? `▲ ${t("collect.tierDense")}`
+                      : tier === "edge"
+                        ? `◆ ${t("collect.tierEdge")}`
+                        : `■ ${t("collect.tierEmpty")}`}
                   </label>
                 ))}
+
+                {objectList.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-3 ml-auto">
+                    {objectList.map((obj) => (
+                      <label
+                        key={obj.name}
+                        className="inline-flex cursor-pointer items-center gap-1.5"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={visibleObjects[obj.name] !== false}
+                          onChange={(e) =>
+                            setVisibleObjects((prev) => ({
+                              ...prev,
+                              [obj.name]: e.target.checked,
+                            }))
+                          }
+                          className="accent-cyan-400"
+                        />
+                        <span
+                          className="inline-block h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: obj.color }}
+                        />
+                        <span className="font-mono text-slate-200">
+                          {obj.name}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </div>
-
-        {/* Right: Numbered placements & test points table */}
-        <div className="panel flex flex-col gap-2.5 p-3.5 text-xs">
-          <div className="flex items-baseline justify-between">
-            <h3 className="font-semibold text-slate-100">
-              {t("collect.tableTitle")}
-            </h3>
-            <span className="font-mono text-[11px] text-slate-400 tabular">
-              {visibleMarkers.length}
-            </span>
-          </div>
-
-          {!state.suggestions ? (
-            <div className="flex flex-1 items-center justify-center rounded border border-white/10 bg-black/25 p-6 text-center text-slate-400">
-              {t("collect.noSuggestions")}
-            </div>
-          ) : (
-            <>
-              <div className="max-h-[64vh] overflow-y-auto pr-0.5">
-                <table className="w-full border-collapse text-left font-mono text-[11px] tabular">
-                  <thead className="sticky top-0 bg-[var(--surface-1)]">
-                    <tr className="border-b border-white/10 font-sans text-[10px] text-slate-400">
-                      <th className="py-1.5 pr-1.5 font-medium">
-                        {t("collect.colNo")}
-                      </th>
-                      <th className="py-1.5 px-1.5 font-medium">
-                        {t("collect.colObject")}
-                      </th>
-                      <th className="py-1.5 px-1.5 font-medium">
-                        {t("collect.colKind")}
-                      </th>
-                      <th className="py-1.5 px-1 text-right font-medium">x</th>
-                      <th className="py-1.5 px-1 text-right font-medium">y</th>
-                      <th className="py-1.5 pl-1 text-right font-medium">
-                        yaw
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleMarkers.map((entry) => {
-                      const active =
-                        entry.key === (highlightedKey ?? selectedKey);
-                      return (
-                        <tr
-                          key={entry.key}
-                          onClick={() => setSelectedKey(entry.key)}
-                          onMouseEnter={() => setHighlightedKey(entry.key)}
-                          onMouseLeave={() => setHighlightedKey(null)}
-                          className={`border-b border-white/5 cursor-pointer transition-colors ${
-                            active ? "bg-cyan-500/20" : "hover:bg-white/5"
-                          }`}
-                        >
-                          <td className="py-1 pr-1.5 font-semibold">
-                            <button
-                              type="button"
-                              aria-pressed={selectedKey === entry.key}
-                              aria-label={`${entry.item.object} ${entry.code}`}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setSelectedKey(entry.key);
-                              }}
-                              className="inline-block rounded px-1 py-0.5 text-[10px] text-slate-950"
-                              style={{ backgroundColor: entry.color }}
-                            >
-                              {entry.code}
-                            </button>
-                          </td>
-                          <td className="py-1 px-1.5 text-slate-200 truncate max-w-[6.5rem]">
-                            {entry.item.object}
-                          </td>
-                          <td className="py-1 px-1.5 font-sans text-[10px] text-slate-400">
-                            {entry.kind === "placement"
-                              ? t("collect.kindPlacement")
-                              : entry.item.tier === "dense"
-                                ? t("collect.tierDense")
-                                : entry.item.tier === "edge"
-                                  ? t("collect.tierEdge")
-                                  : t("collect.tierEmpty")}
-                          </td>
-                          <td className="py-1 px-1 text-right text-slate-300">
-                            {entry.item.x_m.toFixed(3)}
-                          </td>
-                          <td className="py-1 px-1 text-right text-slate-300">
-                            {entry.item.y_m.toFixed(3)}
-                          </td>
-                          <td className="py-1 pl-1 text-right text-cyan-200">
-                            {entry.item.yaw_deg.toFixed(0)}°
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {state.suggestions.omitted_objects.length > 0 && (
-                <p className="rounded border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-200">
-                  {t("collect.omittedObjects", {
-                    objects: state.suggestions.omitted_objects.join(", "),
-                  })}
-                </p>
-              )}
-              {state.suggestions.provenance.note && (
-                <p className="text-[10px] text-slate-500">
-                  {state.suggestions.provenance.note}
-                </p>
-              )}
             </>
           )}
         </div>
+
+        {planMode ? (
+          <CollectionPlanRounds
+            plan={plan ?? null}
+            selected={round}
+            busy={runningPlan}
+            colorOf={planColorOf}
+            onSelect={setSelectedRoundId}
+            onReplace={(roundId) =>
+              void handlePlanEdit({ action: "replace", roundId })
+            }
+            onDelete={(roundId) =>
+              void handlePlanEdit({ action: "delete", roundId })
+            }
+          />
+        ) : (
+          <div className="panel flex flex-col gap-2.5 p-3.5 text-xs">
+            <div className="flex items-baseline justify-between">
+              <h3 className="font-semibold text-slate-100">
+                {t("collect.tableTitle")}
+              </h3>
+              <span className="font-mono text-[11px] text-slate-400 tabular">
+                {visibleMarkers.length}
+              </span>
+            </div>
+
+            {!state.suggestions ? (
+              <div className="flex flex-1 items-center justify-center rounded border border-white/10 bg-black/25 p-6 text-center text-slate-400">
+                {t("collect.noSuggestions")}
+              </div>
+            ) : (
+              <>
+                <div className="max-h-[64vh] overflow-y-auto pr-0.5">
+                  <table className="w-full border-collapse text-left font-mono text-[11px] tabular">
+                    <thead className="sticky top-0 bg-[var(--surface-1)]">
+                      <tr className="border-b border-white/10 font-sans text-[10px] text-slate-400">
+                        <th className="py-1.5 pr-1.5 font-medium">
+                          {t("collect.colNo")}
+                        </th>
+                        <th className="py-1.5 px-1.5 font-medium">
+                          {t("collect.colObject")}
+                        </th>
+                        <th className="py-1.5 px-1.5 font-medium">
+                          {t("collect.colKind")}
+                        </th>
+                        <th className="py-1.5 px-1 text-right font-medium">
+                          x
+                        </th>
+                        <th className="py-1.5 px-1 text-right font-medium">
+                          y
+                        </th>
+                        <th className="py-1.5 pl-1 text-right font-medium">
+                          yaw
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleMarkers.map((entry) => {
+                        const active =
+                          entry.key === (highlightedKey ?? selectedKey);
+                        return (
+                          <tr
+                            key={entry.key}
+                            onClick={() => setSelectedKey(entry.key)}
+                            onMouseEnter={() => setHighlightedKey(entry.key)}
+                            onMouseLeave={() => setHighlightedKey(null)}
+                            className={`border-b border-white/5 cursor-pointer transition-colors ${
+                              active ? "bg-cyan-500/20" : "hover:bg-white/5"
+                            }`}
+                          >
+                            <td className="py-1 pr-1.5 font-semibold">
+                              <button
+                                type="button"
+                                aria-pressed={selectedKey === entry.key}
+                                aria-label={`${entry.item.object} ${entry.code}`}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setSelectedKey(entry.key);
+                                }}
+                                className="inline-block rounded px-1 py-0.5 text-[10px] text-slate-950"
+                                style={{ backgroundColor: entry.color }}
+                              >
+                                {entry.code}
+                              </button>
+                            </td>
+                            <td className="py-1 px-1.5 text-slate-200 truncate max-w-[6.5rem]">
+                              {entry.item.object}
+                            </td>
+                            <td className="py-1 px-1.5 font-sans text-[10px] text-slate-400">
+                              {entry.kind === "placement"
+                                ? t("collect.kindPlacement")
+                                : entry.item.tier === "dense"
+                                  ? t("collect.tierDense")
+                                  : entry.item.tier === "edge"
+                                    ? t("collect.tierEdge")
+                                    : t("collect.tierEmpty")}
+                            </td>
+                            <td className="py-1 px-1 text-right text-slate-300">
+                              {entry.item.x_m.toFixed(3)}
+                            </td>
+                            <td className="py-1 px-1 text-right text-slate-300">
+                              {entry.item.y_m.toFixed(3)}
+                            </td>
+                            <td className="py-1 pl-1 text-right text-cyan-200">
+                              {entry.item.yaw_deg.toFixed(0)}°
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {state.suggestions.omitted_objects.length > 0 && (
+                  <p className="rounded border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-200">
+                    {t("collect.omittedObjects", {
+                      objects: state.suggestions.omitted_objects.join(", "),
+                    })}
+                  </p>
+                )}
+                {state.suggestions.provenance.note && (
+                  <p className="text-[10px] text-slate-500">
+                    {state.suggestions.provenance.note}
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

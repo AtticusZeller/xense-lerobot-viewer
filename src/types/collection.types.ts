@@ -87,6 +87,59 @@ export interface CollectionMaskBundle {
   targets: CollectionMaskTarget[];
 }
 
+export type CollectionPlanTarget = Extract<
+  CollectionMaskTarget,
+  { kind: "placement" }
+> &
+  Pick<SuggestionPointItem, "arm" | "x_m" | "y_m" | "z_m" | "yaw_deg"> & {
+    pixel: TargetPolygonVertex;
+    arrow_end_pixel: TargetPolygonVertex;
+    yaw_symmetry_deg: number;
+    outline_plane_z_m: number | null;
+  };
+
+export interface CollectionPlanRound {
+  id: number;
+  mask_bundle_sha256: string;
+  targets: CollectionPlanTarget[];
+  status: "pending" | "collected" | "skipped";
+  episode_index: number | null;
+}
+
+export interface CollectionPlan {
+  format: "lerobot-collection-plan";
+  version: 1;
+  plan_id: string;
+  generation: number;
+  next_round_id: number;
+  repo_id: string;
+  revision: string;
+  source_episode_count: number;
+  camera: string;
+  image_size: [number, number];
+  camera_serial: string | null;
+  calibration_sha256: string;
+  mask_bundle_sha256: string;
+  settings: {
+    round_count: number;
+    objects_per_round: number;
+    seed: number;
+    min_revisit_distance_m: number;
+    region_source: string;
+  };
+  excluded_objects: Record<string, string>;
+  rounds: CollectionPlanRound[];
+}
+
+export type CollectionPlanAction =
+  | { action: "generate"; roundCount: number; objectsPerRound: number }
+  | { action: "replace" | "delete"; roundId: number };
+
+export interface CollectionPlanSnapshot {
+  plan_id: string;
+  generation: number;
+}
+
 export interface CollectionArtifactPathSummary {
   targetsPath: string;
   suggestionsPath: string;
@@ -108,6 +161,8 @@ export interface CollectionStatePayload {
   suggestionsError: string | null;
   masks: CollectionMaskBundle | null;
   masksError: "invalid" | "stale" | "imageMismatch" | null;
+  plan: CollectionPlan | null;
+  planError: "invalid" | "stale" | "imageMismatch" | null;
   calibration: {
     exists: boolean;
     hasNonZeroDistortion: boolean;
@@ -117,6 +172,7 @@ export interface CollectionStatePayload {
     exists: boolean;
     positionPoint: DistributionPositionPoint | null;
     annotatedEpisodes: number[];
+    objects: string[];
     error: string | null;
   };
   cli: {
